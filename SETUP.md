@@ -2,20 +2,20 @@
 
 ## 1. Python version
 
-Use **Python 3.11** (the deployment target). Newer versions (e.g. 3.13/3.14) may lack prebuilt wheels for `torch` / `sentence-transformers` / `chromadb`. Check with `python --version`; on Windows, `py -3.11 --version` shows if 3.11 is installed (get it from python.org if not).
+Use **Python 3.14**. Check with `python --version`; on Windows, `py -3.14 --version` shows if 3.14 is installed (get it from python.org if not). If `pip install` fails on `torch`, `sentence-transformers` or `chromadb` because no prebuilt wheel exists yet, check each package's release notes for 3.14 support.
 
 ## 2. Create and activate a virtual environment
 
 Windows (PowerShell):
 ```powershell
-py -3.11 -m venv venv
+py -3.14 -m venv venv
 venv\Scripts\Activate.ps1
 ```
 Windows (cmd): `venv\Scripts\activate.bat`
 
 macOS / Linux:
 ```bash
-python3.11 -m venv venv
+python3.14 -m venv venv
 source venv/bin/activate
 ```
 
