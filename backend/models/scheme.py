@@ -89,6 +89,25 @@ class Occupation(StrEnum):
     OTHER = "other"
 
 
+class ExclusionCategory(StrEnum):
+    """A group of people who are NOT eligible for a scheme (e.g. higher economic status)."""
+
+    INSTITUTIONAL_LAND_HOLDER = "institutional_land_holder"
+    CONSTITUTIONAL_POST_HOLDER = "constitutional_post_holder"  # former or present
+    ELECTED_REPRESENTATIVE = "elected_representative"  # Minister, MP, MLA, MLC, Mayor, District Panchayat chair
+    GOVERNMENT_EMPLOYEE = "government_employee"  # serving or retired; Group D / Class IV / MTS not included
+    HIGH_PENSIONER = "high_pensioner"  # retired, monthly pension at or above excluded_pension_monthly_min
+    INCOME_TAX_PAYER = "income_tax_payer"  # paid income tax in the last assessment year
+    REGISTERED_PROFESSIONAL = "registered_professional"  # doctor, engineer, lawyer, CA, architect in practice
+
+
+class ExclusionScope(StrEnum):
+    """Whom an exclusion applies to: only the applicant, or any member of the family."""
+
+    PERSON = "person"
+    FAMILY = "family"
+
+
 class Eligibility(BaseModel):
     """Structured eligibility rules. ``None`` or an empty list means "no restriction"."""
 
@@ -101,6 +120,16 @@ class Eligibility(BaseModel):
     occupations: list[Occupation] = Field(default_factory=list)
     gender: Gender = Gender.ALL
     social_categories: list[SocialCategory] = Field(default_factory=list)
+    requires_own_cultivable_land: bool = Field(
+        default=False, description="True if the person/family must own cultivable land in their own name."
+    )
+    excluded_if: list[ExclusionCategory] = Field(
+        default_factory=list, description="Ineligible if the person (or family, see excluded_scope) is in any of these."
+    )
+    excluded_pension_monthly_min: int | None = Field(
+        default=None, ge=0, description="Rupees per month; the pension threshold for 'high_pensioner'."
+    )
+    excluded_scope: ExclusionScope = ExclusionScope.PERSON
     other_conditions: str = Field(default="", description="Anything not captured above, free text.")
 
     @field_validator("allowed_states")
@@ -117,6 +146,16 @@ class Eligibility(BaseModel):
         """Ensure min_age is not greater than max_age."""
         if self.min_age is not None and self.max_age is not None and self.min_age > self.max_age:
             raise ValueError(f"min_age ({self.min_age}) is greater than max_age ({self.max_age}).")
+        return self
+
+    @model_validator(mode="after")
+    def _pension_threshold_matches_exclusion(self) -> Self:
+        """The pension threshold is required for 'high_pensioner' and meaningless without it."""
+        has_category = ExclusionCategory.HIGH_PENSIONER in self.excluded_if
+        if has_category and self.excluded_pension_monthly_min is None:
+            raise ValueError("excluded_pension_monthly_min is required when excluded_if contains 'high_pensioner'.")
+        if not has_category and self.excluded_pension_monthly_min is not None:
+            raise ValueError("excluded_pension_monthly_min is set but excluded_if does not contain 'high_pensioner'.")
         return self
 
 

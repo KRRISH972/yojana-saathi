@@ -1,0 +1,27 @@
+Source: https://pmkisan.gov.in (official PM-KISAN portal, homepage)
+FAQ source: https://pmkisan.gov.in/Documents/RevisedFAQ.pdf
+Homepage header: Department of Agriculture and Farmers Welfare, Ministry of Agriculture and Farmers Welfare, Government of India
+
+PM-KISAN Scheme
+* PM Kisan is a Central Sector scheme with 100% funding from Government of India.
+* It has become operational from 1.12.2018.
+* Under the scheme an income support of 6,000/- per year in three equal installments will be provided to all land holding farmer families.
+* Definition of family for the scheme is husband, wife and minor children.
+* State Government and UT administration will identify the farmer families which are eligible for support as per scheme guidelines.
+* The fund will be directly transferred to the bank accounts of the beneficiaries.
+* There are various Exclusion Categories for the scheme.
+
+Scheme Exclusion
+The following categories of beneficiaries of higher economic status shall not be eligible for benefit under the scheme.
+1. All Institutional Land holders.
+2. Farmer families which belong to one or more of the following categories:
+* Former and present holders of constitutional posts
+* Former and present Ministers/ State Ministers and former/present Members of LokSabha/ RajyaSabha/ State Legislative Assemblies/ State Legislative Councils, former and present Mayors of Municipal Corporations, former and present Chairpersons of District Panchayats.
+* All serving or retired officers and employees of Central/ State Government Ministries /Offices/Departments and its field units Central or State PSEs and Attached offices /Autonomous Institutions under Government as well as regular employees of the Local Bodies (Excluding Multi Tasking Staff /Class IV/Group D employees)
+* All superannuated/retired pensioners whose monthly pension is Rs.10,000/- or more (Excluding Multi Tasking Staff / Class IV/Group D employees) of above category
+* All Persons who paid Income Tax in last assessment year
+* Professionals like Doctors, Engineers, Lawyers, Chartered Accountants, and Architects registered with Professional bodies and carrying out profession by undertaking practices.
+
+Important Note (homepage)
+* eKYC is MANDATORY for PM-KISAN registered farmers.
+* The Department has identified suspected cases that may fall under the exclusion criteria, for example: farmers who acquired land ownership after 01-02-2019, and cases where more than one family member is receiving benefits (e.g. both husband and wife, an adult member and a minor). Benefits for such cases are temporarily withheld till physical verification.

@@ -18,6 +18,10 @@
       "occupations": [],
       "gender": "all",
       "social_categories": [],
+      "requires_own_cultivable_land": false,
+      "excluded_if": [],
+      "excluded_pension_monthly_min": null,
+      "excluded_scope": "person",
       "other_conditions": "PLACEHOLDER - no real eligibility data entered."
     },
     "documents_required": ["PLACEHOLDER document"],
@@ -44,11 +48,58 @@
       "occupations": [],
       "gender": "all",
       "social_categories": [],
+      "requires_own_cultivable_land": false,
+      "excluded_if": [],
+      "excluded_pension_monthly_min": null,
+      "excluded_scope": "person",
       "other_conditions": "PLACEHOLDER - no real eligibility data entered."
     },
     "documents_required": ["PLACEHOLDER document"],
     "how_to_apply": "PLACEHOLDER - replace with the real application steps.",
     "official_url": "https://example.com/placeholder-state-scheme",
     "last_verified_date": "1970-01-01"
+  },
+  {
+    "id": "pm-kisan",
+    "name_en": "Pradhan Mantri Kisan Samman Nidhi (PM-KISAN)",
+    "name_hi": "प्रधानमंत्री किसान सम्मान निधि (पीएम-किसान)",
+    "ministry": "Ministry of Agriculture and Farmers Welfare",
+    "level": "central",
+    "state": null,
+    "category": "agriculture",
+    "description_en": "A Central Sector scheme, 100% funded by the Government of India, that gives income support to landholding farmer families. The money goes directly into the family's bank account. The scheme has been operational since 1 December 2018.",
+    "description_hi": "यह केंद्र सरकार की योजना है। जिन किसान परिवारों के नाम पर खेती की ज़मीन है, उन्हें हर साल आर्थिक मदद मिलती है। पैसा सीधे बैंक खाते में आता है।",
+    "benefits": "Income support of Rs 6,000 per year per family, paid in three equal installments of Rs 2,000 each, every four months, directly into the beneficiary's bank account.",
+    "eligibility": {
+      "min_age": null,
+      "max_age": null,
+      "max_annual_income": null,
+      "allowed_states": [],
+      "occupations": [],
+      "gender": "all",
+      "social_categories": [],
+      "requires_own_cultivable_land": true,
+      "excluded_if": [
+        "institutional_land_holder",
+        "constitutional_post_holder",
+        "elected_representative",
+        "government_employee",
+        "high_pensioner",
+        "income_tax_payer",
+        "registered_professional"
+      ],
+      "excluded_pension_monthly_min": 10000,
+      "excluded_scope": "family",
+      "other_conditions": "ELIGIBLE: landholding farmer families that have cultivable land in their own name, as per the land records of the State/UT. There is no limit on land size. Family means husband, wife and minor children (cut-off date for a child becoming a major is 01-02-2019). NOT ELIGIBLE: tenant farmers, and people who cultivate land owned by their father or forefathers, unless the land has been transferred to their own name on succession. LAND CONDITIONS: land that is not cultivable (micro holdings) or is used for non-agricultural purposes is not covered; land in urban areas is covered only if it is actually cultivated. CUT-OFF DATE: land ownership is judged as on 01-02-2019; ownership acquired after that date is not considered, except transfer of land on succession on the death of the landowner. ONE BENEFIT PER FAMILY: if more than one member of a family receives benefits (for example both husband and wife, or an adult member and a minor), benefits are withheld until physical verification. eKYC is MANDATORY for registered farmers. EXCLUDED (higher economic status): (a) all institutional land holders; (b) farmer families in which one or more members belong to any of these categories: former and present holders of constitutional posts; former and present Ministers/State Ministers, Members of Lok Sabha/Rajya Sabha/State Legislative Assemblies/State Legislative Councils, Mayors of Municipal Corporations and Chairpersons of District Panchayats; serving or retired officers and employees of Central/State Government ministries, offices and departments and their field units, Central or State PSEs, attached offices and autonomous institutions under Government, and regular employees of Local Bodies (Multi Tasking Staff / Class IV / Group D employees are not excluded and can still be eligible if the family is otherwise eligible); retired pensioners whose monthly pension is Rs 10,000 or more (Multi Tasking Staff / Class IV / Group D excluded); any person who paid Income Tax in the last assessment year (this is an exclusion category, NOT an income limit); professionals such as Doctors, Engineers, Lawyers, Chartered Accountants and Architects who are registered with professional bodies and practise their profession. A wrong declaration can lead to recovery of the money paid and penal action as per law."
+    },
+    "documents_required": [
+      "Aadhaar number",
+      "Bank account number with IFSC code",
+      "Land ownership records",
+      "Mobile number (recommended, not mandatory)"
+    ],
+    "how_to_apply": "Option 1: Self-register online on pmkisan.gov.in using 'New Farmer Registration' in the Farmers Corner. Option 2: Apply through the local Patwari, revenue officer or the nodal officer nominated by the State Government. eKYC is mandatory after registration. The State Nodal Officer verifies the details before payment.",
+    "official_url": "https://pmkisan.gov.in",
+    "last_verified_date": "2026-09-26"
   }
 ]
