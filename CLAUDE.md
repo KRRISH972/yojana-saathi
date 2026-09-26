@@ -4,10 +4,10 @@ AI assistant that helps Indian citizens (especially rural users) discover govern
 
 ## Stack (all free)
 
-- **Backend:** Python 3.11, FastAPI
+- **Backend:** Python 3.14, FastAPI
 - **Vector DB:** ChromaDB (persistent, local)
 - **Embeddings:** sentence-transformers multilingual model, run locally
-- **LLM:** Google Gemini API (free tier), configured via `GEMINI_API_KEY` / `GEMINI_MODEL`
+- **LLM:** Google Gemini API (free tier), model `gemini-3.8-flash`, configured via `GEMINI_API_KEY` / `GEMINI_MODEL`
 - **Frontend:** plain HTML + Tailwind CSS + vanilla JS (no build step)
 - **Voice:** browser Web Speech API (speech recognition + synthesis)
 - **Deployment:** Hugging Face Spaces (Docker)
@@ -35,6 +35,12 @@ scripts/      One-off CLI tools (e.g. ingest schemes into ChromaDB)
 - Routes stay thin: validate input, call a service, return a model. Logic lives in `services/`.
 - Write tests in `backend/tests/` for new service logic.
 - Frontend must work on low-end phones and slow networks: no heavy frameworks, keep JS small.
+
+## Gemini API
+
+- **Model:** `gemini-3.8-flash`. Gemini 2.0 models are shut down and 2.5 models are being shut down, so never use them.
+- **Check the docs first:** before writing any Gemini code, read the current official docs at https://ai.google.dev/gemini-api/docs/latest-model. The SDK and API have changed recently, so do not rely on older examples from memory.
+- **Thinking level:** use `thinking_level` set to `"low"` for chat responses to keep replies fast.
 
 ## Common commands
 
