@@ -4,7 +4,7 @@ AI assistant that helps Indian citizens (especially rural users) discover govern
 
 ## Stack (all free)
 
-- **Backend:** Python 3.14, FastAPI
+- **Backend:** Python 3.14, FastAPI (confirmed: `requirements.txt` installs cleanly on 3.14, including torch, sentence-transformers and chromadb — stay on 3.14)
 - **Vector DB:** ChromaDB (persistent, local)
 - **Embeddings:** sentence-transformers multilingual model, run locally
 - **LLM:** Google Gemini API (free tier), model `gemini-3.8-flash`, configured via `GEMINI_API_KEY` / `GEMINI_MODEL`
@@ -49,4 +49,10 @@ python -m venv venv && venv\Scripts\activate    # Windows
 pip install -r requirements.txt
 uvicorn backend.app.main:app --reload
 pytest
+python scripts/validate_data.py                 # validate data/schemes.json
 ```
+
+## Scheme data
+
+- The `Scheme` model is in `backend/models/scheme.py`; the dataset is `data/schemes.json`; see `DATA_GUIDE.md`.
+- Scheme facts (amounts, income limits, age limits, eligibility) are entered by the project owner from official sources. **Never invent or guess real scheme details** — use `null` or clearly marked `PLACEHOLDER` text.

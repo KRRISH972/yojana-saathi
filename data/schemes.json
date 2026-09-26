@@ -1,0 +1,54 @@
+[
+  {
+    "id": "placeholder-central-scheme",
+    "name_en": "PLACEHOLDER Central Scheme",
+    "name_hi": "प्लेसहोल्डर केंद्रीय योजना",
+    "ministry": "PLACEHOLDER Ministry",
+    "level": "central",
+    "state": null,
+    "category": "other",
+    "description_en": "PLACEHOLDER - replace with the real scheme description from the official source.",
+    "description_hi": "प्लेसहोल्डर - इसे आधिकारिक स्रोत से असली योजना विवरण से बदलें।",
+    "benefits": "PLACEHOLDER - replace with the real benefits.",
+    "eligibility": {
+      "min_age": null,
+      "max_age": null,
+      "max_annual_income": null,
+      "allowed_states": [],
+      "occupations": [],
+      "gender": "all",
+      "social_categories": [],
+      "other_conditions": "PLACEHOLDER - no real eligibility data entered."
+    },
+    "documents_required": ["PLACEHOLDER document"],
+    "how_to_apply": "PLACEHOLDER - replace with the real application steps.",
+    "official_url": "https://example.com/placeholder-central-scheme",
+    "last_verified_date": "1970-01-01"
+  },
+  {
+    "id": "placeholder-state-scheme",
+    "name_en": "PLACEHOLDER State Scheme",
+    "name_hi": "प्लेसहोल्डर राज्य योजना",
+    "ministry": "PLACEHOLDER Department",
+    "level": "state",
+    "state": "Bihar",
+    "category": "other",
+    "description_en": "PLACEHOLDER - not a real scheme. Bihar is used only to show the state field format.",
+    "description_hi": "प्लेसहोल्डर - यह असली योजना नहीं है। राज्य फ़ील्ड का प्रारूप दिखाने के लिए केवल बिहार लिखा है।",
+    "benefits": "PLACEHOLDER - replace with the real benefits.",
+    "eligibility": {
+      "min_age": null,
+      "max_age": null,
+      "max_annual_income": null,
+      "allowed_states": ["Bihar"],
+      "occupations": [],
+      "gender": "all",
+      "social_categories": [],
+      "other_conditions": "PLACEHOLDER - no real eligibility data entered."
+    },
+    "documents_required": ["PLACEHOLDER document"],
+    "how_to_apply": "PLACEHOLDER - replace with the real application steps.",
+    "official_url": "https://example.com/placeholder-state-scheme",
+    "last_verified_date": "1970-01-01"
+  }
+]
