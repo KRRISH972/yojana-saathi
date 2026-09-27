@@ -28,6 +28,7 @@ def main() -> int:
 
     profile = UserProfile()
     last_question: str | None = None
+    matched_scheme_ids: list[str] = []
     last_result: ChatTurnResult | None = None
 
     while True:
@@ -49,7 +50,9 @@ def main() -> int:
             continue
 
         try:
-            result = handle_message(message, profile=profile, last_question=last_question)
+            result = handle_message(
+                message, profile=profile, last_question=last_question, matched_scheme_ids=matched_scheme_ids
+            )
         except GeminiRateLimitError as exc:
             print(f"Saathi: {exc}\n")
             continue
@@ -59,6 +62,7 @@ def main() -> int:
 
         profile = result.profile
         last_question = result.next_question
+        matched_scheme_ids = result.matched_scheme_ids
         last_result = result
         print(f"Saathi: {result.reply_text}\n")
 

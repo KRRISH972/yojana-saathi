@@ -87,6 +87,29 @@ def _search_both_queries(query_en: str, query_hi: str, top_k: int = SEARCH_TOP_K
     return sorted(best_by_scheme.values(), key=lambda m: m.score, reverse=True)
 
 
+def _resolve_matched_scheme_ids(query_en: str, query_hi: str, previous_matched_scheme_ids: list[str]) -> list[str]:
+    """Decide which schemes are "in play" this turn, combining this turn's search with
+    whatever was already matched in earlier turns of the same conversation.
+
+    If both queries are empty, this message is not itself a new scheme search — Gemini
+    marks it that way when a message only answers a previous question (e.g. "no"). In
+    that case we must not search at all (a bare "no" matches nothing and would otherwise
+    wipe out everything found so far); we simply re-check the schemes already on the
+    table. Otherwise, this turn's search results are combined with (not replacing) the
+    earlier matches, so a scheme found in an earlier turn is never silently dropped just
+    because a later message's search phrase does not happen to mention it again.
+    """
+    if not query_en.strip() and not query_hi.strip():
+        return list(previous_matched_scheme_ids)
+
+    new_matches = _search_both_queries(query_en, query_hi)
+    combined_ids = [m.scheme_id for m in new_matches]
+    for scheme_id in previous_matched_scheme_ids:
+        if scheme_id not in combined_ids:
+            combined_ids.append(scheme_id)
+    return combined_ids
+
+
 def _format_scheme_result(result: SchemeResult, scheme: Scheme | None) -> str:
     """One scheme's status, reasons and (if relevant) official link, as plain text for the
     reply-writing prompt."""
@@ -122,21 +145,32 @@ def _build_reply_prompt(
     return prompt, next_question
 
 
-def handle_message(message: str, profile: UserProfile | None = None, last_question: str | None = None) -> ChatTurnResult:
+def handle_message(
+    message: str,
+    profile: UserProfile | None = None,
+    last_question: str | None = None,
+    matched_scheme_ids: list[str] | None = None,
+) -> ChatTurnResult:
     """Run one full chat turn and return the reply plus the updated state.
 
     ``profile`` is the profile accumulated so far (an empty UserProfile for a new
     conversation); ``last_question`` is the exact question text most recently asked, used
-    to interpret a short answer like "yes" correctly.
+    to interpret a short answer like "yes" correctly; ``matched_scheme_ids`` are the
+    scheme ids already in play from earlier turns (empty/None for a new conversation).
+    The caller (e.g. scripts/chat_cli.py) is expected to keep passing back
+    ``result.matched_scheme_ids`` on the next call, the same way it already does for
+    ``profile`` and ``last_question``.
     """
     profile = profile if profile is not None else UserProfile()
 
     understanding = understand_message(message, last_question=last_question)
     merged_profile = _merge_profile(profile, understanding.profile_updates)
 
-    matches = _search_both_queries(understanding.search_query_en, understanding.search_query_hi)
+    all_matched_ids = _resolve_matched_scheme_ids(
+        understanding.search_query_en, understanding.search_query_hi, matched_scheme_ids or []
+    )
     all_schemes_by_id = {scheme.id: scheme for scheme in _load_all_schemes()}
-    matched_schemes = [all_schemes_by_id[m.scheme_id] for m in matches if m.scheme_id in all_schemes_by_id]
+    matched_schemes = [all_schemes_by_id[scheme_id] for scheme_id in all_matched_ids if scheme_id in all_schemes_by_id]
 
     report = check_eligibility(merged_profile, matched_schemes)
 

@@ -148,3 +148,58 @@ def test_next_question_is_the_single_most_useful_one(monkeypatch: pytest.MonkeyP
 
     assert result.next_question is not None
     assert result.next_question == result.eligibility.questions[0].question
+
+
+def test_answer_only_turn_keeps_earlier_matched_schemes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test for a real bug: turn 1 finds both schemes and asks the income-tax
+    question; turn 2 only answers "No", which Gemini correctly reports as empty search
+    queries (a bare answer is not itself a new scheme search). That must NOT wipe out the
+    schemes matched in turn 1 — they should still be checked with the updated profile."""
+    monkeypatch.setattr(
+        assistant, "understand_message",
+        lambda message, last_question=None: UnderstandingResult(
+            profile_updates=UserProfile(age=35, owns_cultivable_land=True, landholding_hectares=1.0),
+            search_query_en="pension and income support for farmers",
+            search_query_hi="किसानों के लिए पेंशन और आय सहायता",
+            language_style=LanguageStyle.ENGLISH,
+        ),
+    )  # fmt: skip
+    search_mock = _patch_search(monkeypatch, [
+        SchemeMatch(scheme_id="pm-kmy", category="pension", score=0.80),
+        SchemeMatch(scheme_id="pm-kisan", category="agriculture", score=0.66),
+    ])  # fmt: skip
+
+    turn_one = assistant.handle_message("I am a 35 year old farmer with 1 hectare of land")
+    assert set(turn_one.matched_scheme_ids) == {"pm-kmy", "pm-kisan"}
+    assert {r.scheme_id for r in turn_one.eligibility.possibly_eligible} == {"pm-kmy", "pm-kisan"}
+    assert turn_one.next_question is not None
+    assert "income tax" in turn_one.next_question.lower()
+    assert search_mock.call_count == 2  # one call per non-empty query
+
+    # Turn two only answers the income-tax question; the search queries come back empty.
+    monkeypatch.setattr(
+        assistant, "understand_message",
+        lambda message, last_question=None: UnderstandingResult(
+            profile_updates=UserProfile(exclusions={ExclusionCategory.INCOME_TAX_PAYER: False}),
+            search_query_en="",
+            search_query_hi="",
+            language_style=LanguageStyle.ENGLISH,
+        ),
+    )  # fmt: skip
+
+    turn_two = assistant.handle_message(
+        "No",
+        profile=turn_one.profile,
+        last_question=turn_one.next_question,
+        matched_scheme_ids=turn_one.matched_scheme_ids,
+    )
+
+    # The bug: this previously came back with matched_scheme_ids == [] and "no matching
+    # scheme found", because a bare "No" doesn't match either scheme's search document.
+    assert set(turn_two.matched_scheme_ids) == {"pm-kmy", "pm-kisan"}
+    assert search_mock.call_count == 2  # unchanged: no new search call on an answer-only turn
+    assert not turn_two.eligibility.not_eligible  # income tax = no rules out neither scheme
+    assert turn_two.eligibility.eligible or turn_two.eligibility.possibly_eligible
+    assert turn_two.next_question is not None
+    assert turn_two.next_question != turn_one.next_question
+    assert "income tax" not in turn_two.next_question.lower()
