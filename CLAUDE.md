@@ -50,9 +50,18 @@ pip install -r requirements.txt
 uvicorn backend.app.main:app --reload
 pytest
 python scripts/validate_data.py                 # validate data/schemes.json
+python scripts/ingest.py                        # (re)build the ChromaDB search index from schemes.json
+python scripts/test_search.py                    # print search results for a fixed set of test queries
 ```
 
 ## Scheme data
 
 - The `Scheme` model is in `backend/models/scheme.py`; the dataset is `data/schemes.json`; see `DATA_GUIDE.md`.
 - Scheme facts (amounts, income limits, age limits, eligibility) are entered by the project owner from official sources. **Never invent or guess real scheme details** — use `null` or clearly marked `PLACEHOLDER` text.
+
+## Search (RAG retrieval)
+
+- `backend/services/embeddings.py` loads the shared multilingual embedding model (`paraphrase-multilingual-MiniLM-L12-v2`, ~470 MB, downloaded once and cached).
+- `backend/services/ingest.py` builds one search document per scheme (name, description, benefits, and a plain-language eligibility summary) and rebuilds the persistent ChromaDB collection at `data/chroma/` (gitignored — never commit it; re-run `scripts/ingest.py` after any change to `data/schemes.json`).
+- `backend/services/retriever.py`'s `search_schemes(query, top_k=5, category=None)` embeds the query and returns the closest schemes with a cosine-similarity `score` (1.0 = identical meaning, 0.0 = unrelated). The model and the Chroma collection are loaded once per process, not per call.
+- Hinglish written in Roman script (e.g. "budhape mein pension") embeds poorly with this model. Step 4's LLM is expected to rewrite the user's question into clear Hindi/English before it reaches `search_schemes`, rather than the retriever trying to handle Romanized Hinglish itself.
