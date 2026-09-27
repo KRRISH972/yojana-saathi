@@ -21,9 +21,13 @@ message (and, if given, the question they were just asked) and extract four thin
 infer, or assume a value they did not say, even if it seems likely. Leave every field \
 you are not sure about as null (or, for exclusion answers, simply omit that key). If the \
 message answers a yes/no question you were told was just asked, record that answer under \
-the matching field. If the user gives a land area in acres or bigha, convert it to \
-hectares (1 acre = 0.404686 hectares) and store only the converted number in \
-landholding_hectares — never store the original unit.
+the matching field. If the user gives a land area in acres, convert it to hectares \
+(1 acre = 0.404686 hectares) and store only the converted number in \
+landholding_hectares. If the user already gives it in hectares, store that number as-is. \
+For any other local land unit — bigha, kanal, biswa, guntha, or anything else that is not \
+acres or hectares — do NOT convert it and do NOT guess a hectare figure: these units have \
+different sizes in different states, so a wrong guess is worse than no answer. Leave \
+landholding_hectares null in that case, even though the user did mention a land area.
 
 2. search_query_en: a short, clear English phrase describing what government help the \
 user is asking about. Use an empty string if this message is not about finding or asking \

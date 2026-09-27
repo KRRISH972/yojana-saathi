@@ -49,3 +49,18 @@ def test_no_last_question_is_marked_clearly(mock_generate_structured: list[dict]
     """With no prior question, the prompt should say so rather than leaving it blank."""
     understand_message("hello")
     assert "(none)" in mock_generate_structured[0]["prompt"]
+
+
+def test_system_instruction_only_allows_converting_acres_and_hectares(mock_generate_structured: list[dict]) -> None:
+    """Local land units (bigha, kanal, biswa, ...) differ by state, so the instruction
+    given to Gemini must forbid guessing a hectare conversion for them, and only allow
+    acres (converted) and hectares (as-is)."""
+    understand_message("I have 5 bigha of land")
+    instruction = mock_generate_structured[0]["system_instruction"]
+
+    assert "acres" in instruction
+    assert "hectares" in instruction
+    for local_unit in ("bigha", "kanal", "biswa"):
+        assert local_unit in instruction
+    assert "do NOT convert" in instruction
+    assert "leave landholding_hectares null" in instruction.lower()
