@@ -99,6 +99,7 @@ class ExclusionCategory(StrEnum):
     HIGH_PENSIONER = "high_pensioner"  # retired, monthly pension at or above excluded_pension_monthly_min
     INCOME_TAX_PAYER = "income_tax_payer"  # paid income tax in the last assessment year
     REGISTERED_PROFESSIONAL = "registered_professional"  # doctor, engineer, lawyer, CA, architect in practice
+    OTHER_SOCIAL_SECURITY_SCHEME = "other_social_security_scheme"  # covered by another statutory pension/social security scheme
 
 
 class ExclusionScope(StrEnum):
@@ -122,6 +123,9 @@ class Eligibility(BaseModel):
     social_categories: list[SocialCategory] = Field(default_factory=list)
     requires_own_cultivable_land: bool = Field(
         default=False, description="True if the person/family must own cultivable land in their own name."
+    )
+    max_landholding_hectares: float | None = Field(
+        default=None, gt=0, description="Maximum cultivable land the family may own, in hectares. None = no limit."
     )
     excluded_if: list[ExclusionCategory] = Field(
         default_factory=list, description="Ineligible if the person (or family, see excluded_scope) is in any of these."

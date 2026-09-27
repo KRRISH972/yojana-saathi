@@ -7,11 +7,11 @@ All schemes live in `data/schemes.json` as one JSON list. Each entry must match 
 1. **Use official sources only** (the ministry/department website, myscheme.gov.in, the official gazette or guidelines). Never fill in numbers from memory.
 2. **Copy, don't guess.** If the official source does not state a limit (age, income), use `null`. `null` and `[]` mean "no restriction".
 3. **Set `last_verified_date`** to the day you checked the official source (`YYYY-MM-DD`, not a future date).
-4. **Replace every placeholder.** Remove the two `PLACEHOLDER` example entries once you have real ones.
+4. **Never leave placeholder text in.** If you start a new entry from scratch, mark unfinished fields with `PLACEHOLDER` while you work, then replace every occurrence with real data before committing. The validator warns if any `PLACEHOLDER` text remains.
 
 ## Steps
 
-1. Copy an existing entry in `data/schemes.json` and edit it.
+1. Copy an existing entry in `data/schemes.json` (e.g. `pm-kisan` or `pm-kmy`) and edit it.
 2. Run the validator from the project root:
    ```
    venv\Scripts\python scripts/validate_data.py
@@ -47,6 +47,7 @@ All schemes live in `data/schemes.json` as one JSON list. Each entry must match 
 | `gender` | `"all"`, `"male"`, `"female"` or `"transgender"` |
 | `social_categories` | Any of `general`, `obc`, `sc`, `st`, `ews`, `minority`; `[]` = any |
 | `requires_own_cultivable_land` | `true` if the person/family must own cultivable land in their own name; default `false` |
+| `max_landholding_hectares` | Maximum cultivable land the family may own, in hectares (e.g. `2.0`); `null` = no limit |
 | `excluded_if` | List of groups who are NOT eligible (see below); `[]` = no exclusions |
 | `excluded_pension_monthly_min` | Monthly pension in rupees at or above which a retired person is excluded. Required if `excluded_if` has `high_pensioner`, and not allowed otherwise |
 | `excluded_scope` | `"person"` (only the applicant) or `"family"` (any family member); default `"person"` |
@@ -63,6 +64,7 @@ All schemes live in `data/schemes.json` as one JSON list. Each entry must match 
 | `high_pensioner` | Retired person whose monthly pension is at or above `excluded_pension_monthly_min` |
 | `income_tax_payer` | Paid income tax in the last assessment year. This is an exclusion, **not** an income limit, so leave `max_annual_income` as `null` |
 | `registered_professional` | Doctor, engineer, lawyer, chartered accountant or architect registered with a professional body and practising |
+| `other_social_security_scheme` | Already covered by another statutory pension/social security scheme (e.g. NPS, ESIC, EPFO, PM-SYM, PM-LVM). List the specific schemes in `other_conditions` |
 
 Only list a group if the official source excludes it. Put exceptions and rules the fields cannot express (tenant farmers, land ownership cut-off dates, eKYC) in `other_conditions`.
 

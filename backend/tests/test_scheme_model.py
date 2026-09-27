@@ -45,6 +45,7 @@ def test_new_fields_have_safe_defaults() -> None:
     """With no input, no land is required and nobody is excluded."""
     eligibility = Eligibility()
     assert eligibility.requires_own_cultivable_land is False
+    assert eligibility.max_landholding_hectares is None
     assert eligibility.excluded_if == []
     assert eligibility.excluded_pension_monthly_min is None
     assert eligibility.excluded_scope is ExclusionScope.PERSON
@@ -62,6 +63,19 @@ def test_valid_exclusions_are_accepted(scheme_dict: dict[str, Any]) -> None:
     assert scheme.eligibility.requires_own_cultivable_land is True
     assert scheme.eligibility.excluded_if == [ExclusionCategory.INCOME_TAX_PAYER, ExclusionCategory.HIGH_PENSIONER]
     assert scheme.eligibility.excluded_scope is ExclusionScope.FAMILY
+
+
+@pytest.mark.parametrize("hectares", [2.0, 0.5])
+def test_max_landholding_hectares_accepts_positive_numbers(hectares: float) -> None:
+    """A positive hectare limit is accepted and kept as given."""
+    assert Eligibility(max_landholding_hectares=hectares).max_landholding_hectares == hectares
+
+
+@pytest.mark.parametrize("hectares", [0, -1])
+def test_max_landholding_hectares_rejects_non_positive_numbers(hectares: float) -> None:
+    """Zero or negative hectare limits make no sense and are rejected."""
+    with pytest.raises(ValidationError):
+        Eligibility(max_landholding_hectares=hectares)
 
 
 def test_high_pensioner_requires_threshold() -> None:
@@ -101,7 +115,30 @@ def test_real_pm_kisan_entry_uses_new_fields() -> None:
     assert eligibility.requires_own_cultivable_land is True
     assert eligibility.excluded_scope is ExclusionScope.FAMILY
     assert eligibility.excluded_pension_monthly_min == 10000
-    assert set(eligibility.excluded_if) == set(ExclusionCategory)
+    assert eligibility.max_landholding_hectares is None
+    assert set(eligibility.excluded_if) == set(ExclusionCategory) - {ExclusionCategory.OTHER_SOCIAL_SECURITY_SCHEME}
+
+
+def test_real_pm_kmy_entry_matches_sources() -> None:
+    """The shipped PM-KMY entry has the age range and only exact-match exclusions."""
+    entries = json.loads(SCHEMES_JSON.read_text(encoding="utf-8-sig"))
+    scheme = Scheme.model_validate(next(e for e in entries if e["id"] == "pm-kmy"))
+    eligibility = scheme.eligibility
+    assert (eligibility.min_age, eligibility.max_age) == (18, 40)
+    assert eligibility.occupations == []
+    assert eligibility.max_annual_income is None
+    assert eligibility.requires_own_cultivable_land is True
+    assert eligibility.max_landholding_hectares == 2.0
+    assert ExclusionCategory.HIGH_PENSIONER not in eligibility.excluded_if  # PM-KMY has no pension rule
+    assert ExclusionCategory.OTHER_SOCIAL_SECURITY_SCHEME in eligibility.excluded_if
+    assert eligibility.excluded_pension_monthly_min is None
+    assert eligibility.other_conditions.startswith("NOTE: Based on official documents dated August 2019")
+
+
+def test_no_placeholder_entries_remain() -> None:
+    """Once real scheme data exists, placeholder example entries must not ship in schemes.json."""
+    entries = json.loads(SCHEMES_JSON.read_text(encoding="utf-8-sig"))
+    assert all("placeholder" not in json.dumps(e).lower() for e in entries)
 
 
 def _run_validator(path: Path) -> subprocess.CompletedProcess[str]:
@@ -130,3 +167,14 @@ def test_validator_script_accepts_good_exclusion_fields(scheme_dict: dict[str, A
     path.write_text(json.dumps([scheme_dict]), encoding="utf-8")
     result = _run_validator(path)
     assert result.returncode == 0, result.stdout
+
+
+def test_validator_script_reports_bad_landholding_limit(scheme_dict: dict[str, Any], tmp_path: Path) -> None:
+    """The script exits 1 and names the field for a zero/negative hectare limit."""
+    bad = copy.deepcopy(scheme_dict)
+    bad["eligibility"] = {"max_landholding_hectares": 0}
+    path = tmp_path / "bad_land.json"
+    path.write_text(json.dumps([bad]), encoding="utf-8")
+    result = _run_validator(path)
+    assert result.returncode == 1
+    assert "max_landholding_hectares" in result.stdout

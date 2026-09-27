@@ -1,65 +1,5 @@
 [
   {
-    "id": "placeholder-central-scheme",
-    "name_en": "PLACEHOLDER Central Scheme",
-    "name_hi": "प्लेसहोल्डर केंद्रीय योजना",
-    "ministry": "PLACEHOLDER Ministry",
-    "level": "central",
-    "state": null,
-    "category": "other",
-    "description_en": "PLACEHOLDER - replace with the real scheme description from the official source.",
-    "description_hi": "प्लेसहोल्डर - इसे आधिकारिक स्रोत से असली योजना विवरण से बदलें।",
-    "benefits": "PLACEHOLDER - replace with the real benefits.",
-    "eligibility": {
-      "min_age": null,
-      "max_age": null,
-      "max_annual_income": null,
-      "allowed_states": [],
-      "occupations": [],
-      "gender": "all",
-      "social_categories": [],
-      "requires_own_cultivable_land": false,
-      "excluded_if": [],
-      "excluded_pension_monthly_min": null,
-      "excluded_scope": "person",
-      "other_conditions": "PLACEHOLDER - no real eligibility data entered."
-    },
-    "documents_required": ["PLACEHOLDER document"],
-    "how_to_apply": "PLACEHOLDER - replace with the real application steps.",
-    "official_url": "https://example.com/placeholder-central-scheme",
-    "last_verified_date": "1970-01-01"
-  },
-  {
-    "id": "placeholder-state-scheme",
-    "name_en": "PLACEHOLDER State Scheme",
-    "name_hi": "प्लेसहोल्डर राज्य योजना",
-    "ministry": "PLACEHOLDER Department",
-    "level": "state",
-    "state": "Bihar",
-    "category": "other",
-    "description_en": "PLACEHOLDER - not a real scheme. Bihar is used only to show the state field format.",
-    "description_hi": "प्लेसहोल्डर - यह असली योजना नहीं है। राज्य फ़ील्ड का प्रारूप दिखाने के लिए केवल बिहार लिखा है।",
-    "benefits": "PLACEHOLDER - replace with the real benefits.",
-    "eligibility": {
-      "min_age": null,
-      "max_age": null,
-      "max_annual_income": null,
-      "allowed_states": ["Bihar"],
-      "occupations": [],
-      "gender": "all",
-      "social_categories": [],
-      "requires_own_cultivable_land": false,
-      "excluded_if": [],
-      "excluded_pension_monthly_min": null,
-      "excluded_scope": "person",
-      "other_conditions": "PLACEHOLDER - no real eligibility data entered."
-    },
-    "documents_required": ["PLACEHOLDER document"],
-    "how_to_apply": "PLACEHOLDER - replace with the real application steps.",
-    "official_url": "https://example.com/placeholder-state-scheme",
-    "last_verified_date": "1970-01-01"
-  },
-  {
     "id": "pm-kisan",
     "name_en": "Pradhan Mantri Kisan Samman Nidhi (PM-KISAN)",
     "name_hi": "प्रधानमंत्री किसान सम्मान निधि (पीएम-किसान)",
@@ -79,6 +19,7 @@
       "gender": "all",
       "social_categories": [],
       "requires_own_cultivable_land": true,
+      "max_landholding_hectares": null,
       "excluded_if": [
         "institutional_land_holder",
         "constitutional_post_holder",
@@ -99,6 +40,51 @@
       "Mobile number (recommended, not mandatory)"
     ],
     "how_to_apply": "Option 1: Self-register online on pmkisan.gov.in using 'New Farmer Registration' in the Farmers Corner. Option 2: Apply through the local Patwari, revenue officer or the nodal officer nominated by the State Government. eKYC is mandatory after registration. The State Nodal Officer verifies the details before payment.",
+    "official_url": "https://pmkisan.gov.in",
+    "last_verified_date": "2026-09-26"
+  },
+  {
+    "id": "pm-kmy",
+    "name_en": "Pradhan Mantri Kisan Maan-Dhan Yojana (PM-KMY)",
+    "name_hi": "प्रधानमंत्री किसान मानधन योजना (पीएम-केएमवाई)",
+    "ministry": "Ministry of Agriculture and Farmers Welfare",
+    "level": "central",
+    "state": null,
+    "category": "pension",
+    "description_en": "A voluntary, contribution-based old age pension scheme for landholding Small and Marginal Farmers aged 18 to 40 years. The farmer pays a small monthly amount into a Pension Fund managed by the Life Insurance Corporation of India (LIC), and the Central Government pays an equal matching amount. The scheme has been effective from 9 August 2019.",
+    "description_hi": "यह किसानों के बुढ़ापे के लिए पेंशन योजना है। 18 से 40 साल की उम्र के छोटे और सीमांत किसान हर महीने थोड़ी रकम जमा करते हैं। केंद्र सरकार भी उतनी ही रकम जमा करती है। 60 साल के होने पर हर महीने 3,000 रुपये पेंशन मिलती है।",
+    "benefits": "Assured pension of Rs 3,000 per month after the farmer completes 60 years of age. The farmer contributes Rs 55 to Rs 200 per month (depending on the age of joining, 18 to 40 years) until age 60, and the Central Government adds an equal matching contribution to the Pension Fund managed by LIC. If the pensioner dies after age 60, the spouse gets 50% of the pension (Rs 1,500 per month) as family pension, provided the spouse is not already a beneficiary of the scheme. A farmer's spouse can also join separately and get a separate pension of Rs 3,000 (Salient Features). Enrolment is free of cost for the farmer. There is no provision for commutation of pension.",
+    "eligibility": {
+      "min_age": 18,
+      "max_age": 40,
+      "max_annual_income": null,
+      "allowed_states": [],
+      "occupations": [],
+      "gender": "all",
+      "social_categories": [],
+      "requires_own_cultivable_land": true,
+      "max_landholding_hectares": 2.0,
+      "excluded_if": [
+        "institutional_land_holder",
+        "constitutional_post_holder",
+        "elected_representative",
+        "government_employee",
+        "income_tax_payer",
+        "registered_professional",
+        "other_social_security_scheme"
+      ],
+      "excluded_pension_monthly_min": null,
+      "excluded_scope": "person",
+      "other_conditions": "NOTE: Based on official documents dated August 2019; amounts and rules may have changed — verify on the official website. AGE: min_age and max_age are the age of joining (18 to 40 years inclusive); pension starts at age 60. LAND: only Small and Marginal Farmers (SMFs) are eligible, meaning farmers who own cultivable land up to 2 hectares as per the land records of the State/UT (maximum landholding: 2 hectares). A farmer owning more than 2 hectares is NOT eligible, and a person with no land holding in their own name is NOT eligible. Men and women farmers are both eligible, in all States and UTs. Per the FAQs, farmers whose names appear in the land records as on 01-08-2019 are eligible, and the cut-off date for determining eligibility is 01-08-2019. NOT ELIGIBLE (not covered by the structured fields): SMFs covered under any other statutory social security scheme such as the National Pension Scheme (NPS), Employees' State Insurance Corporation (ESIC) scheme or Employees' Provident Fund Organisation (EPFO) scheme; farmers who have opted for Pradhan Mantri Shram Yogi Maan-Dhan Yojana (PM-SYM); farmers who have opted for Pradhan Mantri Laghu Vyapari Maan-Dhan Yojana (PM-LVM). HIGHER ECONOMIC STATUS (excluded_if): institutional land holders; former and present holders of constitutional posts; former and present Ministers/State Ministers, Members of Lok Sabha/Rajya Sabha/State Legislative Assemblies/State Legislative Councils, Mayors of Municipal Corporations and Chairpersons of District Panchayats; serving or retired officers and employees of Central/State Government ministries, offices and departments and their field units, Central or State PSEs, attached offices and autonomous institutions under Government, and regular employees of Local Bodies (Multi Tasking Staff / Class IV / Group D employees, serving or retired, are NOT excluded and can be eligible if they meet the other criteria); any person who paid Income Tax in the last assessment year (an exclusion category, NOT an income limit); professionals such as Doctors, Engineers, Lawyers, Chartered Accountants and Architects registered with professional bodies and practising. Exclusion is certified on the farmer's self-declaration; on an incorrect declaration the farmer gets back their contributions without interest and the Government's matching contribution is stopped. MONTHLY CONTRIBUTION BY THE FARMER, by age of joining (the Central Government pays an equal amount): 18: Rs 55; 19: Rs 58; 20: Rs 61; 21: Rs 64; 22: Rs 68; 23: Rs 72; 24: Rs 76; 25: Rs 80; 26: Rs 85; 27: Rs 90; 28: Rs 95; 29: Rs 100; 30: Rs 105; 31: Rs 110; 32: Rs 120; 33: Rs 130; 34: Rs 140; 35: Rs 150; 36: Rs 160; 37: Rs 170; 38: Rs 180; 39: Rs 190; 40: Rs 200. Contributions can also be paid quarterly, 4-monthly or half-yearly. The farmer can allow the contribution to be auto-debited from the bank account in which PM-KISAN benefit is received. State/UT Governments may share the farmer's contribution. DEFAULT: contributions are auto-debited; if unpaid for 6 months the account becomes dormant, and it can be regularised by paying all dues with interest/late fee as set by the Government. DEATH BEFORE AGE 60: the spouse can continue by paying the remaining contributions (same rate and same vesting date, and the same pension is paid to the spouse), provided the spouse is not already an SMF beneficiary of the scheme; if the spouse does not continue, the farmer's contributions plus fund interest or Savings Bank interest (whichever is higher) are paid to the spouse; if there is no spouse, they are paid to the nominee. DEATH AFTER AGE 60: the spouse gets 50% of the pension as family pension (only if not already a beneficiary); after the death of both, the corpus goes back to the Pension Fund. EXIT: a farmer may leave the scheme and gets their own contributions back with interest, but the Government's matching contribution is not paid on premature exit; the interest rate for voluntary exit is not stated in these documents. If a beneficiary becomes ineligible, the account stays active but the Government's contribution stops; the farmer may keep paying the full contribution and can withdraw at age 60 with interest at prevailing savings bank rates."
+    },
+    "documents_required": [
+      "Aadhaar card / Aadhaar number",
+      "Bank passbook or bank account details (account number and IFSC/MICR code)",
+      "Land holding details or copy (mentioned only in the Hindi version of Salient Features; land records of the State/UT are used to identify eligible farmers)",
+      "Mobile number (FAQs list it as mandatory information, but the Operational Guidelines say it is optional)",
+      "Date of birth, spouse and nominee details, and address (asked for at registration)"
+    ],
+    "how_to_apply": "Visit the nearest Common Service Centre (CSC) with your Aadhaar card and bank passbook or account details. The Village Level Entrepreneur (VLE) at the CSC does the online registration, and you sign the enrolment-cum-auto-debit mandate form (this lets your contribution be auto-debited from your bank account, or from the account where you receive PM-KISAN). After enrolment and the first contribution you get a PM-KMY Pension Card with a unique Pension Account Number. Enrolment is free of cost for the farmer. Alternatively, contact the State Nodal Officer (or the agency designated by them) in your district, or enrol online through links on the appropriate websites (Operational Guidelines).",
     "official_url": "https://pmkisan.gov.in",
     "last_verified_date": "2026-09-26"
   }

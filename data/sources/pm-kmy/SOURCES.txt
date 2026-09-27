@@ -1,0 +1,11 @@
+Sources for PM Kisan Maandhan Yojana (PM-KMY)
+Copied into this folder on: 2026-09-26
+
+1. PM-KMY - Operational Guidelines.pdf
+   URL: https://pmkisan.gov.in/Documents/PM-KMY - Operational Guidelines.pdf
+
+2. PM-KMY - Salient Features.pdf
+   URL: https://pmkisan.gov.in/Documents/PM-KMY - Salient Features.pdf
+
+3. PM-KMY - FAQs.pdf
+   URL: https://pmkisan.gov.in/Documents/PM-KMY - FAQs.pdf
