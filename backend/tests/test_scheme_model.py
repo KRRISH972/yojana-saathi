@@ -116,7 +116,15 @@ def test_real_pm_kisan_entry_uses_new_fields() -> None:
     assert eligibility.excluded_scope is ExclusionScope.FAMILY
     assert eligibility.excluded_pension_monthly_min == 10000
     assert eligibility.max_landholding_hectares is None
-    assert set(eligibility.excluded_if) == set(ExclusionCategory) - {ExclusionCategory.OTHER_SOCIAL_SECURITY_SCHEME}
+    assert set(eligibility.excluded_if) == {
+        ExclusionCategory.INSTITUTIONAL_LAND_HOLDER,
+        ExclusionCategory.CONSTITUTIONAL_POST_HOLDER,
+        ExclusionCategory.ELECTED_REPRESENTATIVE,
+        ExclusionCategory.GOVERNMENT_EMPLOYEE,
+        ExclusionCategory.HIGH_PENSIONER,
+        ExclusionCategory.INCOME_TAX_PAYER,
+        ExclusionCategory.REGISTERED_PROFESSIONAL,
+    }
 
 
 def test_real_pm_kmy_entry_matches_sources() -> None:
@@ -129,8 +137,15 @@ def test_real_pm_kmy_entry_matches_sources() -> None:
     assert eligibility.max_annual_income is None
     assert eligibility.requires_own_cultivable_land is True
     assert eligibility.max_landholding_hectares == 2.0
-    assert ExclusionCategory.HIGH_PENSIONER not in eligibility.excluded_if  # PM-KMY has no pension rule
-    assert ExclusionCategory.OTHER_SOCIAL_SECURITY_SCHEME in eligibility.excluded_if
+    assert set(eligibility.excluded_if) == {
+        ExclusionCategory.INSTITUTIONAL_LAND_HOLDER,
+        ExclusionCategory.CONSTITUTIONAL_POST_HOLDER,
+        ExclusionCategory.ELECTED_REPRESENTATIVE,
+        ExclusionCategory.GOVERNMENT_EMPLOYEE,
+        ExclusionCategory.INCOME_TAX_PAYER,
+        ExclusionCategory.REGISTERED_PROFESSIONAL,
+        ExclusionCategory.OTHER_SOCIAL_SECURITY_SCHEME,
+    }
     assert eligibility.excluded_pension_monthly_min is None
     assert eligibility.other_conditions.startswith("NOTE: Based on official documents dated August 2019")
 
