@@ -16,9 +16,10 @@ AI assistant that helps Indian citizens (especially rural users) discover govern
 
 ```
 backend/
-  app/        FastAPI app: entrypoint, routes, config loading
+  app/        FastAPI app: entrypoint, routes, config loading (backend/app/config.py)
   services/   Business logic: retrieval, embeddings, Gemini calls, eligibility
   models/     Pydantic schemas (request/response, scheme records)
+  prompts/    System prompt(s) for Gemini, as plain Markdown files
   tests/      pytest tests
 data/         Scheme datasets (JSON/CSV) used to build the vector DB
 frontend/     Static HTML/CSS/JS served to the browser
@@ -41,6 +42,9 @@ scripts/      One-off CLI tools (e.g. ingest schemes into ChromaDB)
 - **Model:** `gemini-3.8-flash`. Gemini 2.0 models are shut down and 2.5 models are being shut down, so never use them.
 - **Check the docs first:** before writing any Gemini code, read the current official docs at https://ai.google.dev/gemini-api/docs/latest-model. The SDK and API have changed recently, so do not rely on older examples from memory.
 - **Thinking level:** use `thinking_level` set to `"low"` for chat responses to keep replies fast.
+- **All calls go through `backend/services/llm.py`** (`generate_text` / `generate_structured`) — nothing else imports `google.genai` directly. It uses `client.interactions.create(...)`, a top-level `system_instruction`, and `generation_config={"thinking_level": ...}`; it never passes `temperature`, `top_p`, `top_k`, `candidate_count`, or `thinking_budget` (all deprecated/unsupported on Gemini 3+).
+- **SDK version matters:** the Interactions API had a breaking change in May 2026 that requires `google-genai>=2.0`; an older 1.x SDK gets a clear 400 error telling you to upgrade. If a Gemini call fails with a confusing error, check the installed SDK version first (`pip show google-genai`) before assuming the code is wrong.
+- The SDK's own HTTP error classes live in a private module that can move between versions, so `llm.py` detects failures via the exception's `status_code` attribute rather than importing those classes.
 
 ## Common commands
 
@@ -52,6 +56,7 @@ pytest
 python scripts/validate_data.py                 # validate data/schemes.json
 python scripts/ingest.py                        # (re)build the ChromaDB search index from schemes.json
 python scripts/test_search.py                    # print search results for a fixed set of test queries
+python scripts/chat_cli.py                       # chat with the assistant in the terminal
 ```
 
 ## Scheme data
@@ -65,3 +70,15 @@ python scripts/test_search.py                    # print search results for a fi
 - `backend/services/ingest.py` builds one search document per scheme (name, description, benefits, and a plain-language eligibility summary) and rebuilds the persistent ChromaDB collection at `data/chroma/` (gitignored — never commit it; re-run `scripts/ingest.py` after any change to `data/schemes.json`).
 - `backend/services/retriever.py`'s `search_schemes(query, top_k=5, category=None)` embeds the query and returns the closest schemes with a cosine-similarity `score` (1.0 = identical meaning, 0.0 = unrelated). The model and the Chroma collection are loaded once per process, not per call.
 - Hinglish written in Roman script (e.g. "budhape mein pension") embeds poorly with this model. Step 4's LLM is expected to rewrite the user's question into clear Hindi/English before it reaches `search_schemes`, rather than the retriever trying to handle Romanized Hinglish itself.
+
+## Chat pipeline (Gemini + eligibility + search)
+
+One chat turn (`backend/services/assistant.py`'s `handle_message`) runs, in order:
+
+1. `backend/services/understand.py` — one structured Gemini call turns the raw message into `profile_updates` (only facts actually stated, never guessed), `search_query_en`/`search_query_hi`, and `language_style`.
+2. The new `profile_updates` are merged onto the running `UserProfile` (a fact learned in an earlier turn is never overwritten by "unknown" in a later one).
+3. `search_schemes` runs with both queries; the best score per scheme is kept, and anything below 0.35 is dropped (see Step 3's report for why).
+4. `backend/services/eligibility.py`'s `check_eligibility` (pure Python, no LLM) decides each matched scheme's status.
+5. A second Gemini call (`backend/prompts/system_prompt.md` as the system instruction) writes the reply from that decided status — **Gemini explains, it never decides eligibility.**
+
+`scripts/chat_cli.py` chats with this pipeline in the terminal, for manual testing.
