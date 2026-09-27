@@ -13,18 +13,24 @@ from backend.services import llm
 
 
 class _FakeAPIError(Exception):
-    """Stands in for a Gemini SDK HTTP error: any exception with a status_code attribute."""
+    """Stands in for a Gemini SDK HTTP error: any exception with a status_code attribute
+    and, optionally, a parsed ``.body`` (the shape the real SDK's error classes expose)."""
 
-    def __init__(self, status_code: int) -> None:
+    def __init__(self, status_code: int, body: dict | None = None) -> None:
         super().__init__(f"fake error, status {status_code}")
         self.status_code = status_code
+        if body is not None:
+            self.body = body
 
 
 @pytest.fixture(autouse=True)
-def _reset_client_and_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Never sleep in tests, and always start with a clean (unset) cached client."""
+def _reset_client_and_sleep(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Never really sleep in tests (but record calls so we can check retries stay fast),
+    and always start with a clean (unset) cached client."""
     monkeypatch.setattr(llm, "_client", None)
-    monkeypatch.setattr(llm.time, "sleep", lambda seconds: None)
+    sleep_spy = MagicMock()
+    monkeypatch.setattr(llm.time, "sleep", sleep_spy)
+    return sleep_spy
 
 
 @pytest.fixture
@@ -72,6 +78,68 @@ def test_rate_limit_exhausted_raises_friendly_error(fake_client: MagicMock) -> N
     with pytest.raises(llm.GeminiRateLimitError):
         llm.generate_text("hi")
     assert fake_client.interactions.create.call_count == llm.MAX_ATTEMPTS
+
+
+def test_client_disables_the_sdks_own_internal_retry_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test: the SDK has its own internal retry loop that, left enabled, once
+    turned a single 429 into a multi-minute hang before our own retry logic ever ran. The
+    client must be built with attempts=0 so llm.py's retry loop is the only one that runs."""
+    captured_kwargs: dict = {}
+
+    def fake_client_constructor(**kwargs: object) -> MagicMock:
+        captured_kwargs.update(kwargs)
+        return MagicMock()
+
+    monkeypatch.setattr(llm.genai, "Client", fake_client_constructor)
+    llm._get_client()
+
+    http_options = captured_kwargs["http_options"]
+    assert http_options.retry_options.attempts == 0
+
+
+def test_repeated_rate_limit_fails_fast_without_relying_on_sdk_backoff(
+    fake_client: MagicMock, _reset_client_and_sleep: MagicMock
+) -> None:
+    """Repeated 429s must exhaust our own (small, fixed) retry budget quickly, not hang
+    for minutes waiting on some other backoff schedule."""
+    fake_client.interactions.create.side_effect = _FakeAPIError(429)
+
+    with pytest.raises(llm.GeminiRateLimitError):
+        llm.generate_text("hi")
+
+    assert fake_client.interactions.create.call_count == llm.MAX_ATTEMPTS
+    # Only our own short, fixed delays were ever requested — nothing bigger, nothing
+    # sourced from an SDK-side backoff strategy.
+    slept_durations = [call.args[0] for call in _reset_client_and_sleep.call_args_list]
+    assert slept_durations == list(llm.RETRY_DELAYS_SECONDS)
+    assert sum(slept_durations) < 10  # comfortably under the ~30s ceiling
+
+
+def test_daily_quota_message_names_the_daily_limit(fake_client: MagicMock) -> None:
+    """When the server's own error text says the limit is per-day, the friendly message
+    must say so too, rather than the misleading 'try again in a minute'."""
+    fake_client.interactions.create.side_effect = _FakeAPIError(
+        429,
+        body={
+            "error": {
+                "message": (
+                    "Rate limit exceeded for model gemini-3.8-flash "
+                    "(limit: 20 requests per day on Free Tier). Please retry in 29s."
+                )
+            }
+        },
+    )
+    with pytest.raises(llm.GeminiRateLimitError, match="tomorrow"):
+        llm.generate_text("hi")
+
+
+def test_per_minute_quota_message_says_try_again_in_a_minute(fake_client: MagicMock) -> None:
+    """A per-minute limit should still get the "try again in a minute" message."""
+    fake_client.interactions.create.side_effect = _FakeAPIError(
+        429, body={"error": {"message": "Rate limit exceeded: 15 requests per minute."}}
+    )
+    with pytest.raises(llm.GeminiRateLimitError, match="minute"):
+        llm.generate_text("hi")
 
 
 def test_non_retryable_error_fails_immediately(fake_client: MagicMock) -> None:

@@ -39,12 +39,14 @@ scripts/      One-off CLI tools (e.g. ingest schemes into ChromaDB)
 
 ## Gemini API
 
+- **NEVER make a real Gemini API call (live, unmocked) without asking the project owner first — including "quick" manual smoke tests, verification scripts, or `scripts/chat_cli.py`.** The free tier has a very small daily quota (a real 429 error observed on `gemini-3.8-flash` reported "limit: 20 requests per day on Free Tier"), and one unapproved test run can burn through it for the rest of the day. Use mocked tests (see `backend/tests/test_llm.py`, `test_understand.py`, `test_assistant.py`) for everything by default; only run a real call after explicit approval for that specific run.
 - **Model:** `gemini-3.8-flash`. Gemini 2.0 models are shut down and 2.5 models are being shut down, so never use them.
 - **Check the docs first:** before writing any Gemini code, read the current official docs at https://ai.google.dev/gemini-api/docs/latest-model. The SDK and API have changed recently, so do not rely on older examples from memory.
 - **Thinking level:** use `thinking_level` set to `"low"` for chat responses to keep replies fast.
 - **All calls go through `backend/services/llm.py`** (`generate_text` / `generate_structured`) — nothing else imports `google.genai` directly. It uses `client.interactions.create(...)`, a top-level `system_instruction`, and `generation_config={"thinking_level": ...}`; it never passes `temperature`, `top_p`, `top_k`, `candidate_count`, or `thinking_budget` (all deprecated/unsupported on Gemini 3+).
 - **SDK version matters:** the Interactions API had a breaking change in May 2026 that requires `google-genai>=2.0`; an older 1.x SDK gets a clear 400 error telling you to upgrade. If a Gemini call fails with a confusing error, check the installed SDK version first (`pip show google-genai`) before assuming the code is wrong.
 - The SDK's own HTTP error classes live in a private module that can move between versions, so `llm.py` detects failures via the exception's `status_code` attribute rather than importing those classes.
+- **The SDK has its own internal retry loop, and it must stay disabled.** Left on, it once turned a single 429 into a real multi-minute hang, because `llm.py`'s own retry loop would retry a call that was itself silently retrying inside the SDK. `_get_client()` disables this via `HttpOptions(retry_options=HttpRetryOptions(attempts=0))`, so `llm.py`'s `MAX_ATTEMPTS`/`RETRY_DELAYS_SECONDS` are the only retry logic that ever runs, bounding the whole call (including retries) to well under 30 seconds.
 
 ## Common commands
 

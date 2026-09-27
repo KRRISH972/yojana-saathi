@@ -18,6 +18,13 @@ live in a private module (``google.genai._gaos...``) that could be renamed or mo
 without notice between SDK versions, so this wrapper never imports them. Instead it reads
 the ``status_code`` attribute off whatever exception comes back — confirmed present on
 every HTTP-status error raised by this SDK version — and retries or raises based on that.
+
+Retry note: the SDK has its OWN internal retry loop (google.genai._gaos.utils.retries),
+enabled by default, sitting underneath every call. Left alone, it made a single 429 turn
+into a real, observed multi-minute hang — our outer retry loop (below) would retry a call
+that was itself silently retrying inside the SDK, compounding delays. We disable it
+entirely via ``HttpRetryOptions(attempts=0)`` on the client's ``http_options``, so this
+module's own MAX_ATTEMPTS/RETRY_DELAYS_SECONDS are the only retry logic that ever runs.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ import time
 from typing import TypeVar
 
 from google import genai
+from google.genai.types import HttpOptions, HttpRetryOptions
 from pydantic import BaseModel
 
 from backend.app.config import get_settings
@@ -33,9 +41,11 @@ from backend.app.config import get_settings
 T = TypeVar("T", bound=BaseModel)
 
 THINKING_LEVEL = "low"
-REQUEST_TIMEOUT_SECONDS = 20.0
+REQUEST_TIMEOUT_SECONDS = 8.0
 MAX_ATTEMPTS = 3
 RETRY_DELAYS_SECONDS = (1.0, 3.0)  # delay before the 2nd and 3rd attempt
+# Worst case, every attempt times out: 3 * 8s + 1s + 3s = 28s — comfortably under the
+# ~30s the whole call (including all retries) must give up within.
 
 _RATE_LIMIT_STATUS = 429
 _RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
@@ -52,16 +62,50 @@ class GeminiError(RuntimeError):
 
 
 def _get_client() -> genai.Client:
-    """Return the shared Gemini client, creating it only on first use."""
+    """Return the shared Gemini client, creating it only on first use.
+
+    ``HttpRetryOptions(attempts=0)`` disables the SDK's own internal retry loop (see the
+    module docstring) — without it, one 429 can silently turn into minutes of hidden
+    retries before our own retry logic even gets a chance to run.
+    """
     global _client
     if _client is None:
-        _client = genai.Client(api_key=get_settings().gemini_api_key)
+        _client = genai.Client(
+            api_key=get_settings().gemini_api_key,
+            http_options=HttpOptions(retry_options=HttpRetryOptions(attempts=0)),
+        )
     return _client
 
 
 def _status_code(exc: Exception) -> int | None:
     """Best-effort extraction of an HTTP status code from a Gemini SDK exception."""
     return getattr(exc, "status_code", None)
+
+
+def _rate_limit_detail_text(exc: Exception) -> str:
+    """Best-effort extraction of the server's own rate-limit message text.
+
+    The SDK's error classes expose a parsed ``.body`` (the JSON error payload) when
+    available; fall back to the exception's string form if that shape isn't there.
+    """
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            return error["message"]
+    return str(exc)
+
+
+def _friendly_rate_limit_message(exc: Exception) -> str:
+    """A friendly rate-limit message, naming a daily quota specifically when the server's
+    own error text says so, since "try again in a minute" would be misleading advice for
+    a quota that only resets tomorrow."""
+    detail = _rate_limit_detail_text(exc).lower()
+    if "per day" in detail or "daily" in detail:
+        return "Gemini's free daily quota has been used up. Please try again tomorrow."
+    if "per minute" in detail or "rpm" in detail:
+        return "Gemini is getting a lot of requests right now. Please try again in a minute."
+    return "Gemini is getting a lot of requests right now. Please try again shortly."
 
 
 def _call_gemini(**kwargs: object) -> object:
@@ -81,9 +125,7 @@ def _call_gemini(**kwargs: object) -> object:
             if status is not None and status not in _RETRYABLE_STATUS_CODES:
                 raise GeminiError(f"Gemini request failed: {exc}") from exc
             if status == _RATE_LIMIT_STATUS and is_last_attempt:
-                raise GeminiRateLimitError(
-                    "Gemini is getting a lot of requests right now. Please try again in a minute."
-                ) from exc
+                raise GeminiRateLimitError(_friendly_rate_limit_message(exc)) from exc
             if is_last_attempt:
                 raise GeminiError(f"Gemini request failed after {MAX_ATTEMPTS} attempts: {exc}") from exc
             last_exc = exc
