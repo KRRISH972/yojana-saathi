@@ -25,10 +25,12 @@ message (and, if given, the question they were just asked) and extract four thin
 infer, or assume a value they did not say, even if it seems likely. Leave every field \
 you are not sure about as null (or, for exclusion answers, simply omit that key). If the \
 message answers a yes/no question you were told was just asked, record that answer under \
-the matching field. If the user gives a land area in acres, convert it to hectares \
-(1 acre = 0.404686 hectares) and store only the converted number in \
-landholding_hectares. If the user already gives it in hectares, store that number as-is. \
-For any other local land unit — bigha, kanal, biswa, guntha, or anything else that is not \
+the matching field. Whenever the user states how much land they own, ALWAYS fill \
+landholding_hectares as well as owns_cultivable_land — for example, "I am a farmer with \
+1 hectare of land" means owns_cultivable_land = true AND landholding_hectares = 1.0. If the \
+user gives a land area in acres, convert it to hectares (1 acre = 0.404686 hectares) and \
+store only the converted number in landholding_hectares. If the user already gives it in \
+hectares, store that number as-is. For any other local land unit — bigha, kanal, biswa, guntha, or anything else that is not \
 acres or hectares — do NOT convert it and do NOT guess a hectare figure: these units have \
 different sizes in different states, so a wrong guess is worse than no answer. Leave \
 landholding_hectares null in that case, even though the user did mention a land area.
@@ -87,14 +89,44 @@ class _RawUnderstanding(BaseModel):
     language_style: LanguageStyle
 
 
+def _drop_nulls(raw_updates: dict[str, Any]) -> dict[str, Any]:
+    """Remove null values, including null exclusion answers. Gemini (especially Flash-Lite)
+    often writes "not mentioned" as an explicit null, which means the same as leaving the
+    key out; a null exclusion answer would otherwise fail validation as "not a bool"."""
+    cleaned = {field: value for field, value in raw_updates.items() if value is not None}
+    exclusions = cleaned.get("exclusions")
+    if isinstance(exclusions, dict):
+        cleaned["exclusions"] = {category: answer for category, answer in exclusions.items() if answer is not None}
+    return cleaned
+
+
 def _validate_profile_updates(raw_updates: Any) -> UserProfile:
-    """Validate Gemini's profile_updates, or return an empty profile if they are invalid
-    (e.g. "no land" and a land size in the same message), logging only field names."""
+    """Validate Gemini's profile_updates, keeping every valid fact.
+
+    Only the fields that fail validation are dropped, so one bad value (e.g. an unknown
+    state name) never throws away the other facts from the same message. If the updates
+    are still invalid after that (e.g. "no land" and a land size in the same message, a
+    cross-field error that names no single field), the whole update is ignored this turn.
+    Every drop is logged with field names only, never values.
+    """
+    if raw_updates is None:
+        return UserProfile()
+    if not isinstance(raw_updates, dict):
+        logger.warning("Understand call returned profile_updates that is not an object; ignoring it this turn.")
+        return UserProfile()
+    cleaned = _drop_nulls(raw_updates)
     try:
-        return UserProfile.model_validate(raw_updates if raw_updates is not None else {})
+        return UserProfile.model_validate(cleaned)
+    except ValidationError as exc:
+        bad_fields = invalid_field_names(exc)
+    logger.warning("Understand call returned invalid profile_updates on %s; dropping those fields.", ", ".join(bad_fields))
+    # Keep only real fields that did not fail (bad_fields names made-up keys as "(unknown field)").
+    kept = {f: v for f, v in cleaned.items() if f in UserProfile.model_fields and f not in bad_fields}
+    try:
+        return UserProfile.model_validate(kept)
     except ValidationError as exc:
         fields = ", ".join(invalid_field_names(exc))
-        logger.warning("Understand call returned invalid profile_updates on %s; ignoring them this turn.", fields)
+        logger.warning("Understand call's profile_updates still invalid on %s; ignoring them this turn.", fields)
         return UserProfile()
 
 

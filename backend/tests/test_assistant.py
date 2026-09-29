@@ -268,3 +268,40 @@ def test_invalid_merge_keeps_previous_profile_and_logs_no_user_text(
     assert "age" in caplog.text
     assert "my-private-message-text" not in caplog.text
     assert "500" not in caplog.text
+
+
+def test_flash_lite_real_responses_advance_the_conversation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test with the exact raw JSON gemini-3.5-flash-lite returned in a real run:
+    after turn two's "No" to the income-tax question, the answer must be saved and the next
+    question must move on rather than repeating the income-tax question."""
+    from backend.services import understand
+
+    raw_responses = iter([
+        '{"language_style": "english", "profile_updates": {"age": 35, "occupation": "farmer", '
+        '"owns_cultivable_land": true, "state": null}, "search_query_en": "schemes for farmers", '
+        '"search_query_hi": "किसानों के लिए योजनाएं"}',
+        '{"language_style": "english", "profile_updates": {"exclusions": {"income_tax_payer": false}}, '
+        '"search_query_en": "", "search_query_hi": ""}',
+    ])  # fmt: skip
+    monkeypatch.setattr(
+        understand, "generate_structured",
+        lambda prompt, response_model, **_: response_model.model_validate_json(next(raw_responses)),
+    )  # fmt: skip
+    _patch_search(monkeypatch, [
+        SchemeMatch(scheme_id="pm-kisan", category="agriculture", score=0.6),
+        SchemeMatch(scheme_id="pm-kmy", category="pension", score=0.5),
+    ])  # fmt: skip
+
+    turn_one = assistant.handle_message("I am a 35 year old farmer with 1 hectare of land")
+    assert turn_one.profile.age == 35
+    assert turn_one.profile.owns_cultivable_land is True
+    assert "income tax" in (turn_one.next_question or "").lower()
+
+    turn_two = assistant.handle_message(
+        "No", profile=turn_one.profile, last_question=turn_one.next_question,
+        matched_scheme_ids=turn_one.matched_scheme_ids,
+    )  # fmt: skip
+
+    assert turn_two.profile.age == 35  # turn one's facts are still there
+    assert turn_two.profile.exclusion_answer(ExclusionCategory.INCOME_TAX_PAYER) is False
+    assert "income tax" not in (turn_two.next_question or "").lower()

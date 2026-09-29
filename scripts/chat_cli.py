@@ -12,6 +12,8 @@ Requires scripts/ingest.py to have been run at least once, and GEMINI_API_KEY se
 from __future__ import annotations
 
 import io
+import json
+import logging
 import sys
 from pathlib import Path
 
@@ -35,9 +37,35 @@ def _use_utf8_console() -> None:
             stream.reconfigure(encoding="utf-8")
 
 
+def _show_backend_warnings() -> None:
+    """Print warnings from our own code (e.g. dropped profile fields) to the console, so a
+    silently ignored answer is visible while testing. Library loggers are left alone."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[warning] %(name)s: %(message)s"))
+    backend_logger = logging.getLogger("backend")
+    backend_logger.addHandler(handler)
+    backend_logger.setLevel(logging.WARNING)
+
+
+def _print_debug(
+    profile: UserProfile, last_question: str | None, matched_scheme_ids: list[str], last_result: ChatTurnResult | None
+) -> None:
+    """Print the live conversation state first, then the last successful turn's full result."""
+    known = profile.model_dump(mode="json", exclude_defaults=True)
+    print("=== Current profile (facts known so far) ===")
+    print(json.dumps(known, indent=2, ensure_ascii=False) if known else "(nothing known yet)")
+    print(f"Next question: {last_question or '(none)'}")
+    print(f"Matched schemes: {', '.join(matched_scheme_ids) or '(none)'}")
+    if last_result is not None:
+        print("\n=== Last successful turn (full result) ===")
+        print(last_result.model_dump_json(indent=2))
+    print()
+
+
 def main() -> int:
     """Run an interactive chat loop against the assistant."""
     _use_utf8_console()
+    _show_backend_warnings()
     print("Yojana Saathi (terminal chat). Type 'exit' to quit, 'debug' to inspect state.\n")
 
     profile = UserProfile()
@@ -57,10 +85,7 @@ def main() -> int:
         if message.lower() in {"exit", "quit"}:
             break
         if message.lower() == "debug":
-            if last_result is not None:
-                print(last_result.model_dump_json(indent=2))
-            else:
-                print(profile.model_dump_json(indent=2))
+            _print_debug(profile, last_question, matched_scheme_ids, last_result)
             continue
 
         try:

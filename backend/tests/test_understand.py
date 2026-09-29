@@ -126,3 +126,62 @@ def test_invalid_profile_log_names_fields_but_never_values(
     assert "(unknown field)" in caplog.text
     assert "500" not in caplog.text
     assert "ramesh_from_sitapur" not in caplog.text
+
+
+# The exact profile_updates shapes gemini-3.5-flash-lite returned in a real run (2026-09-29)
+# for "I am a 35 year old farmer with 1 hectare of land" and then "No" to the income-tax
+# question. Note the explicit "state": null padding in the first one.
+FLASH_LITE_TURN_ONE = {"age": 35, "occupation": "farmer", "owns_cultivable_land": True, "state": None}
+FLASH_LITE_TURN_TWO = {"exclusions": {"income_tax_payer": False}}
+
+
+def test_flash_lite_real_shapes_are_kept(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """Regression test: both real Flash-Lite shapes must come through with every fact kept
+    and no warning, including the explicit null padding."""
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": FLASH_LITE_TURN_ONE})
+        turn_one = understand_message("I am a 35 year old farmer with 1 hectare of land")
+        _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": FLASH_LITE_TURN_TWO})
+        turn_two = understand_message("No")
+
+    assert turn_one.profile_updates == UserProfile(age=35, occupation="farmer", owns_cultivable_land=True)
+    assert turn_two.profile_updates == UserProfile(exclusions={"income_tax_payer": False})
+    assert caplog.text == ""
+
+
+def test_null_exclusion_answers_mean_not_answered(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """Flash-Lite pads with nulls; a null exclusion answer means "not asked", and must not
+    make the real "No" to the income-tax question be thrown away."""
+    padded = {"age": None, "exclusions": {"income_tax_payer": False, "government_employee": None}}
+    _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": padded})
+
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        result = understand_message("No")
+
+    assert result.profile_updates == UserProfile(exclusions={"income_tax_payer": False})
+    assert caplog.text == ""
+
+
+def test_one_bad_field_does_not_drop_the_other_facts(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Root-cause regression: an invalid value in one field used to throw away every fact
+    from the message. Now only that field is dropped (and logged by name, not value)."""
+    updates = {"age": 35, "state": "India", "owns_cultivable_land": True, "landholding_hectares": 1.0}
+    _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": updates})
+
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        result = understand_message("I am a 35 year old farmer with 1 hectare of land")
+
+    assert result.profile_updates == UserProfile(age=35, owns_cultivable_land=True, landholding_hectares=1.0)
+    assert "state" in caplog.text
+    assert "India" not in caplog.text
+
+
+def test_system_instruction_insists_on_saving_the_land_size(mock_generate_structured: list[dict]) -> None:
+    """Flash-Lite dropped "1 hectare" in a real run, so the instruction must say explicitly
+    that a stated land size always fills landholding_hectares."""
+    understand_message("I am a 35 year old farmer with 1 hectare of land")
+    instruction = mock_generate_structured[0]["system_instruction"]
+    assert "ALWAYS fill" in instruction
+    assert "landholding_hectares = 1.0" in instruction
