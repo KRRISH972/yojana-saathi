@@ -5,7 +5,6 @@ write the reply. Gemini never decides eligibility — it only explains what Pyth
 
 from __future__ import annotations
 
-import json
 import logging
 from functools import lru_cache
 from pathlib import Path
@@ -23,12 +22,12 @@ from backend.services.eligibility import (
     check_eligibility,
 )
 from backend.services.llm import generate_text
-from backend.services.retriever import SchemeMatch, search_schemes
 from backend.services.quick_answer import quick_answer
+from backend.services.retriever import SchemeMatch, search_schemes
+from backend.services.scheme_store import schemes_by_id
 from backend.services.understand import LanguageStyle, understand_message
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SCHEMES_JSON = PROJECT_ROOT / "data" / "schemes.json"
 SYSTEM_PROMPT_PATH = PROJECT_ROOT / "backend" / "prompts" / "system_prompt.md"
 
 logger = logging.getLogger(__name__)
@@ -64,13 +63,6 @@ class ChatTurnResult(BaseModel):
 def _load_system_prompt() -> str:
     """Read backend/prompts/system_prompt.md, cached after the first read."""
     return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
-
-
-@lru_cache
-def _load_all_schemes() -> tuple[Scheme, ...]:
-    """Load every scheme from data/schemes.json, cached after the first read."""
-    entries = json.loads(SCHEMES_JSON.read_text(encoding="utf-8-sig"))
-    return tuple(Scheme.model_validate(entry) for entry in entries)
 
 
 def _clear_contradicted_fields(merged: dict[str, object], updated_fields: set[str]) -> None:
@@ -224,7 +216,7 @@ def handle_message(
     all_matched_ids = _resolve_matched_scheme_ids(
         understanding.search_query_en, understanding.search_query_hi, matched_scheme_ids or []
     )
-    all_schemes_by_id = {scheme.id: scheme for scheme in _load_all_schemes()}
+    all_schemes_by_id = schemes_by_id()
     matched_schemes = [all_schemes_by_id[scheme_id] for scheme_id in all_matched_ids if scheme_id in all_schemes_by_id]
 
     report = check_eligibility(merged_profile, matched_schemes)

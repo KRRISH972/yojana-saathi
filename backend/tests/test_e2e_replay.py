@@ -34,10 +34,13 @@ def _load_script() -> ModuleType:
     return module
 
 
+@pytest.mark.parametrize("via_api", [False, True], ids=["in-process", "via-http-api"])
 def test_recorded_conversation_passes_every_check(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    via_api: bool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Every profile check in the scripted conversation passes on the recorded answers."""
+    """Every profile check in the scripted conversation passes on the recorded answers,
+    both calling the assistant directly and through POST /api/chat, where the whole
+    conversation state makes a JSON round trip through the "browser" on every turn."""
     e2e = _load_script()
     # The harness patches these module globals; register them so they are restored after.
     monkeypatch.setattr(llm, "_call_gemini", llm._call_gemini)
@@ -49,7 +52,7 @@ def test_recorded_conversation_passes_every_check(
     )
     monkeypatch.setattr(retriever, "_collection", collection)
 
-    checker = e2e.run(replay=True)
+    checker = e2e.run(replay=True, via_api=via_api)
 
     assert checker.failures == [], capsys.readouterr().out
     assert checker.passed >= 40

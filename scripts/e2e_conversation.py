@@ -4,6 +4,7 @@ Usage (from the project root):
     venv\\Scripts\\python scripts/e2e_conversation.py              # live: real Gemini calls
     venv\\Scripts\\python scripts/e2e_conversation.py --replay     # offline: recorded answers
     venv\\Scripts\\python scripts/e2e_conversation.py --with-replies   # live, reply calls too
+    venv\\Scripts\\python scripts/e2e_conversation.py --replay --via-api   # through POST /api/chat
 
 The conversation:
   1. "I am a 35 year old farmer with 1 hectare of land"  -> age and land saved
@@ -37,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -100,6 +102,7 @@ class GeminiHarness:
     current_message: str = ""
     real_calls: int = 0
     ledger: CallLedger | None = None
+    api_client: Any = None  # a fastapi TestClient when running via the API
 
     def install(self) -> None:
         """Patch llm._call_gemini (and, unless with_replies, the reply writer)."""
@@ -135,19 +138,68 @@ class GeminiHarness:
             RECORDING_PATH.write_text(text, encoding="utf-8")
 
 
+@dataclass(frozen=True)
+class TurnView:
+    """What the checks look at after one turn, the same whether it ran in-process or
+    through the HTTP API."""
+
+    profile: UserProfile
+    next_question: str | None
+    next_question_field: str | None
+    matched_scheme_ids: list[str]
+    eligible_ids: frozenset[str]
+    not_eligible_ids: frozenset[str]
+    language_style: str
+    understood_by: str
+
+    @classmethod
+    def from_result(cls, result: ChatTurnResult) -> TurnView:
+        """From an in-process handle_message result."""
+        report = result.eligibility
+        return cls(
+            profile=result.profile,
+            next_question=result.next_question,
+            next_question_field=result.next_question_field,
+            matched_scheme_ids=result.matched_scheme_ids,
+            eligible_ids=frozenset(r.scheme_id for r in report.eligible),
+            not_eligible_ids=frozenset(r.scheme_id for r in report.not_eligible),
+            language_style=result.language_style.value,
+            understood_by=result.understood_by,
+        )
+
+    @classmethod
+    def from_api(cls, body: dict[str, Any]) -> TurnView:
+        """From a POST /api/chat JSON response."""
+        state = body["state"]
+        return cls(
+            profile=UserProfile.model_validate(state["profile"]),
+            next_question=state["last_question"],
+            next_question_field=state["last_question_field"],
+            matched_scheme_ids=state["matched_scheme_ids"],
+            eligible_ids=frozenset(c["scheme_id"] for c in body["schemes"] if c["status"] == "eligible"),
+            not_eligible_ids=frozenset(c["scheme_id"] for c in body["schemes"] if c["status"] == "not_eligible"),
+            language_style=body["language_style"],
+            understood_by=body["understood_by"],
+        )
+
+
 @dataclass
 class Conversation:
-    """One chat session's state, carried from turn to turn like chat_cli.py does."""
+    """One chat session's state, carried from turn to turn: in-process like chat_cli.py
+    does, or (via the API) as the JSON state a browser sends back to POST /api/chat."""
 
     harness: GeminiHarness
     profile: UserProfile = field(default_factory=UserProfile)
     last_question: str | None = None
     last_question_field: str | None = None
     matched_scheme_ids: list[str] = field(default_factory=list)
+    api_state: dict[str, Any] | None = None
 
-    def say(self, message: str) -> ChatTurnResult:
+    def say(self, message: str) -> TurnView:
         """Send one message and carry the returned state forward."""
         self.harness.current_message = message
+        if self.harness.api_client is not None:
+            return self._say_via_api(message)
         result = assistant.handle_message(
             message,
             profile=self.profile,
@@ -159,7 +211,21 @@ class Conversation:
         self.last_question = result.next_question
         self.last_question_field = result.next_question_field
         self.matched_scheme_ids = result.matched_scheme_ids
-        return result
+        return TurnView.from_result(result)
+
+    def _say_via_api(self, message: str) -> TurnView:
+        """POST the message with the previous JSON state, exactly as the web UI does."""
+        payload: dict[str, Any] = {"message": message}
+        if self.api_state is not None:
+            payload["state"] = self.api_state
+        response = self.harness.api_client.post("/api/chat", json=payload)
+        if response.status_code != 200:
+            raise RuntimeError(f"POST /api/chat returned {response.status_code}: {response.text}")
+        body = response.json()
+        self.api_state = body["state"]
+        view = TurnView.from_api(body)
+        self.last_question, self.last_question_field = view.next_question, view.next_question_field
+        return view
 
 
 @dataclass
@@ -189,13 +255,8 @@ def _answer_saved_as_no(profile: UserProfile, question_field: str) -> bool:
     return getattr(profile, question_field, None) is False
 
 
-def _eligible_ids(result: ChatTurnResult) -> set[str]:
-    """Ids of the schemes marked eligible this turn."""
-    return {r.scheme_id for r in result.eligibility.eligible}
-
-
 def _check_land_opening(
-    checker: Checker, result: ChatTurnResult, age: int, hectares: float, style: str
+    checker: Checker, result: TurnView, age: int, hectares: float, style: str
 ) -> None:
     """Checks shared by every opening message that states age and land."""
     profile = result.profile
@@ -203,7 +264,7 @@ def _check_land_opening(
     checker.check(profile.owns_cultivable_land is True, f"land ownership saved (got {profile.owns_cultivable_land})")
     got = profile.landholding_hectares
     checker.check(got is not None and abs(got - hectares) < 0.01, f"land saved as ~{hectares:.3f} ha (got {got})")
-    checker.check(result.language_style.value == style, f"language style {style} (got {result.language_style.value})")
+    checker.check(result.language_style == style, f"language style {style} (got {result.language_style})")
     checker.check("pm-kisan" in result.matched_scheme_ids, f"PM-KISAN matched (got {result.matched_scheme_ids})")
 
 
@@ -216,7 +277,7 @@ def run_english_conversation(harness: GeminiHarness, checker: Checker) -> None:
     checker.check({"pm-kisan", "pm-kmy"} <= set(result.matched_scheme_ids), "both schemes matched")
 
     for turn in range(2, 2 + MAX_NO_TURNS):
-        if _eligible_ids(result) >= {"pm-kisan", "pm-kmy"}:
+        if result.eligible_ids >= {"pm-kisan", "pm-kmy"}:
             break
         question, question_field = chat.last_question, chat.last_question_field
         if not checker.check(question_field is not None, "a follow-up question is asked"):
@@ -228,10 +289,10 @@ def run_english_conversation(harness: GeminiHarness, checker: Checker) -> None:
         checker.check(result.next_question != question, "next question changed")
 
     checker.check(
-        _eligible_ids(result) >= {"pm-kisan", "pm-kmy"},
-        f"both schemes eligible at the end (eligible: {sorted(_eligible_ids(result))})",
+        result.eligible_ids >= {"pm-kisan", "pm-kmy"},
+        f"both schemes eligible at the end (eligible: {sorted(result.eligible_ids)})",
     )
-    checker.check(not result.eligibility.not_eligible, "no scheme marked not eligible")
+    checker.check(not result.not_eligible_ids, "no scheme marked not eligible")
 
 
 def run_opening_message(
@@ -243,6 +304,25 @@ def run_opening_message(
     _check_land_opening(checker, result, age=age, hectares=hectares, style=style)
 
 
+def _api_client() -> Any:
+    """An in-process client for the real FastAPI app, with the rate limit switched off
+    (this script sends many messages quickly on purpose)."""
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import app
+    from backend.app.routes import enforce_chat_rate_limit
+
+    app.dependency_overrides[enforce_chat_rate_limit] = lambda: None
+    return TestClient(app)
+
+
+def _clear_api_overrides() -> None:
+    """Undo the rate-limit override made by _api_client."""
+    from backend.app.main import app
+
+    app.dependency_overrides.clear()
+
+
 SCENARIOS: tuple[Callable[[GeminiHarness, Checker], None], ...] = (
     run_english_conversation,
     lambda h, c: run_opening_message(h, c, OPENING_HI, age=40, hectares=ACRES_2_IN_HECTARES, style="hindi"),
@@ -250,16 +330,22 @@ SCENARIOS: tuple[Callable[[GeminiHarness, Checker], None], ...] = (
 )
 
 
-def run(replay: bool, with_replies: bool = False) -> Checker:
-    """Run every scenario and return the collected results."""
+def run(replay: bool, with_replies: bool = False, via_api: bool = False) -> Checker:
+    """Run every scenario and return the collected results. ``via_api`` sends every
+    message through POST /api/chat (in-process, rate limit off) instead of calling
+    handle_message directly."""
     harness = GeminiHarness(replay=replay, with_replies=with_replies)
     harness.install()
+    if via_api:
+        harness.api_client = _api_client()
     checker = Checker()
     try:
         for scenario in SCENARIOS:
             scenario(harness, checker)
     finally:
         harness.save_recording()
+        if via_api:
+            _clear_api_overrides()
     if harness.ledger is None:
         print("\nMode: replay (no real calls)")
     else:
@@ -273,6 +359,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--replay", action="store_true", help="use recorded Gemini answers, no network")
     parser.add_argument("--with-replies", action="store_true", help="also make the real reply-writing calls")
+    parser.add_argument("--via-api", action="store_true", help="send every message through POST /api/chat")
     args = parser.parse_args(argv)
     if args.replay and args.with_replies:
         parser.error("--with-replies needs live mode")
@@ -280,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding="utf-8")  # Hindi output on the Windows console
 
-    checker = run(replay=args.replay, with_replies=args.with_replies)
+    checker = run(replay=args.replay, with_replies=args.with_replies, via_api=args.via_api)
     print(f"Result: {checker.passed} passed, {len(checker.failures)} failed")
     for failure in checker.failures:
         print(f"  FAILED: {failure}")

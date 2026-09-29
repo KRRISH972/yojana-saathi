@@ -34,7 +34,7 @@ from typing import TypeVar
 
 from google import genai
 from google.genai.types import HttpOptions, HttpRetryOptions
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.app.config import get_settings
 
@@ -171,4 +171,8 @@ def generate_structured(
     if system_instruction is not None:
         kwargs["system_instruction"] = system_instruction
     interaction = _call_gemini(**kwargs)
-    return response_model.model_validate_json(interaction.output_text)  # type: ignore[attr-defined]
+    try:
+        return response_model.model_validate_json(interaction.output_text)  # type: ignore[attr-defined]
+    except ValidationError as exc:
+        # Not JSON, or JSON of the wrong shape: a failed call, like any other Gemini error.
+        raise GeminiError(f"Gemini returned a response that did not match the expected format ({exc.error_count()} errors)") from exc

@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     gemini_api_key: str
     gemini_model: str = "gemini-3.5-flash-lite"
     ys_debug_raw: bool = False  # local debugging only: chat_cli prints Gemini's raw profile_updates
+    chat_rate_limit_per_minute: int = 8  # messages per visitor (IP address) per minute
+    chat_global_rate_limit_per_minute: int = 20  # messages per minute from everyone together
 
 
 @lru_cache

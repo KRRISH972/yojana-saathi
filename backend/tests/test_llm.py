@@ -193,3 +193,16 @@ def test_generate_structured_can_send_a_different_schema(fake_client: MagicMock)
     assert result == Loose(name="dog")
     _, kwargs = fake_client.interactions.create.call_args
     assert kwargs["response_format"]["schema"] == strict_schema
+
+
+def test_malformed_structured_reply_becomes_a_gemini_error(fake_client: MagicMock) -> None:
+    """A reply that is not the expected JSON is a failed call (GeminiError), not a crash
+    with a raw ValidationError that callers do not expect."""
+    from pydantic import BaseModel
+
+    class Animal(BaseModel):
+        name: str
+
+    fake_client.interactions.create.return_value = SimpleNamespace(output_text="not json at all")
+    with pytest.raises(llm.GeminiError, match="expected format"):
+        llm.generate_structured("describe a dog", response_model=Animal)

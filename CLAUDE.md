@@ -86,6 +86,15 @@ One chat turn (`backend/services/assistant.py`'s `handle_message`) runs, in orde
 4. `backend/services/eligibility.py`'s `check_eligibility` (pure Python, no LLM) decides each matched scheme's status.
 5. A second Gemini call (`backend/prompts/system_prompt.md` as the system instruction) writes the reply from that decided status — **Gemini explains, it never decides eligibility.**
 
+## HTTP API (Step 5)
+
+- `backend/app/main.py` builds the app; `backend/app/routes.py` has `GET /api/health` and `POST /api/chat` (thin: validate, call `backend/services/chat_session.py`'s `run_chat_turn`, return the model). Request/response models are in `backend/models/chat.py`.
+- **Stateless:** the browser keeps `ConversationState` (profile, last question + its field key, matched scheme ids) and sends it back with every message; the server stores nothing about a citizen.
+- Errors are JSON `{"error": <code>, "detail": <text>}` with stable codes the UI translates: `invalid_request` (422), `rate_limited` / `ai_quota_exhausted` (429), `ai_unavailable` (503, internal details never shown).
+- `backend/services/rate_limit.py` applies an in-memory per-visitor and a global per-minute limit (`CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_GLOBAL_RATE_LIMIT_PER_MINUTE`) so a public deployment cannot drain the free Gemini quota.
+- Startup (`lifespan`) calls `retriever.ensure_ready()`: loads the embedding model and opens the search index, building it from `data/schemes.json` if it is missing.
+- `scripts/e2e_conversation.py --via-api` runs the scripted conversation through `POST /api/chat`; `backend/tests/test_e2e_replay.py` replays it both in-process and via the API.
+
 `scripts/chat_cli.py` chats with this pipeline in the terminal, for manual testing. It prints our own warnings (e.g. a dropped profile field), `debug` shows the live profile first, and `YS_DEBUG_RAW=1` also prints Gemini's raw `profile_updates` each turn (local debugging only, off by default).
 
 Gemini's `profile_updates` are parsed leniently in `understand.py`: nulls mean "not mentioned", exclusion answers are accepted with an `exclusion:` prefix, at the top level, or as "yes"/"no" strings, and anything invalid is dropped one field (or one exclusion key) at a time, never the whole update. A land size stated with a clear unit ("1 hectare", "2 acres", "2 एकड़") is read in Python by `backend/services/land.py` (exact acre conversion; local units like bigha are never converted), because Flash-Lite often leaves `landholding_hectares` out. The schema sent to Gemini replaces the unsupported `exclusiveMinimum`/`exclusiveMaximum` with `minimum`/`maximum`, lists every exclusion key explicitly, and each turn passes the last question's field key (`next_question_field`) so Gemini knows exactly where a yes/no answer goes.
