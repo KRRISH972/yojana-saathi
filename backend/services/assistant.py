@@ -9,6 +9,7 @@ import json
 import logging
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -23,7 +24,8 @@ from backend.services.eligibility import (
 )
 from backend.services.llm import generate_text
 from backend.services.retriever import SchemeMatch, search_schemes
-from backend.services.understand import understand_message
+from backend.services.quick_answer import quick_answer
+from backend.services.understand import LanguageStyle, understand_message
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCHEMES_JSON = PROJECT_ROOT / "data" / "schemes.json"
@@ -51,6 +53,10 @@ class ChatTurnResult(BaseModel):
     next_question: str | None = None
     next_question_field: str | None = Field(
         default=None, description="Field key of next_question (e.g. 'exclusion:income_tax_payer'); pass it back next turn."
+    )
+    language_style: LanguageStyle = Field(description="The language style the reply was written in.")
+    understood_by: Literal["quick_answer", "gemini"] = Field(
+        description="'quick_answer' if a bare yes/no was understood in Python, with no Gemini understand call."
     )
 
 
@@ -202,10 +208,17 @@ def handle_message(
     The caller (e.g. scripts/chat_cli.py) is expected to keep passing back
     ``result.matched_scheme_ids`` on the next call, the same way it already does for
     ``profile``, ``last_question`` and ``last_question_field``.
+
+    A bare yes/no reply to a known question is understood in Python (quick_answer), which
+    saves the Gemini "understand" call; everything else goes through Gemini.
     """
     profile = profile if profile is not None else UserProfile()
 
-    understanding = understand_message(message, last_question=last_question, last_question_field=last_question_field)
+    quick = quick_answer(message, last_question_field)
+    if quick is not None:
+        understanding = quick
+    else:
+        understanding = understand_message(message, last_question=last_question, last_question_field=last_question_field)
     merged_profile = _merge_profile(profile, understanding.profile_updates)
 
     all_matched_ids = _resolve_matched_scheme_ids(
@@ -228,4 +241,6 @@ def handle_message(
         matched_scheme_ids=[s.id for s in matched_schemes],
         next_question=next_question.question if next_question else None,
         next_question_field=next_question.field if next_question else None,
+        language_style=understanding.language_style,
+        understood_by="quick_answer" if quick is not None else "gemini",
     )

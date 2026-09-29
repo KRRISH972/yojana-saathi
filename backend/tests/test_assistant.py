@@ -324,7 +324,7 @@ def test_next_question_field_is_returned_and_passed_back(monkeypatch: pytest.Mon
     assert turn_one.next_question_field is not None
 
     assistant.handle_message(
-        "No", profile=turn_one.profile, last_question=turn_one.next_question,
+        "No, nobody in my family", profile=turn_one.profile, last_question=turn_one.next_question,
         matched_scheme_ids=turn_one.matched_scheme_ids, last_question_field=turn_one.next_question_field,
     )  # fmt: skip
     assert seen == [None, turn_one.next_question_field]

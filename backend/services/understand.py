@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.models.scheme import ExclusionCategory
 from backend.models.user_profile import UserProfile, invalid_field_names
+from backend.services.land import extract_land_hectares
 from backend.services.llm import generate_structured
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ User's latest message:
 
 _EXCLUSION_FIELD_PREFIX = "exclusion:"
 _EXCLUSION_KEYS = frozenset(category.value for category in ExclusionCategory)
+BOOLEAN_PROFILE_FIELDS = frozenset({"owns_cultivable_land"})  # yes/no profile fields (not exclusions)
 _TRUE_STRINGS = frozenset({"yes", "true"})
 _FALSE_STRINGS = frozenset({"no", "false"})
 
@@ -103,6 +105,24 @@ class _RawUnderstanding(BaseModel):
     language_style: LanguageStyle
 
 
+def _replace_exclusive_bounds(node: Any) -> None:
+    """Swap exclusiveMinimum/exclusiveMaximum for minimum/maximum, in place, everywhere.
+
+    Gemini's structured output does not support the exclusive forms, and in real runs
+    gemini-3.5-flash-lite never filled the one field that used one (landholding_hectares,
+    which must be > 0). Python still enforces the strict bound when it validates.
+    """
+    if isinstance(node, dict):
+        for exclusive, inclusive in (("exclusiveMinimum", "minimum"), ("exclusiveMaximum", "maximum")):
+            if exclusive in node:
+                node[inclusive] = node.pop(exclusive)
+        for value in node.values():
+            _replace_exclusive_bounds(value)
+    elif isinstance(node, list):
+        for item in node:
+            _replace_exclusive_bounds(item)
+
+
 @lru_cache
 def _gemini_response_schema() -> dict[str, Any]:
     """The JSON schema Gemini is asked to follow: UnderstandingResult's own schema, except
@@ -113,6 +133,7 @@ def _gemini_response_schema() -> dict[str, Any]:
     every allowed key is listed explicitly instead.
     """
     schema = copy.deepcopy(UnderstandingResult.model_json_schema())
+    _replace_exclusive_bounds(schema)
     exclusions = schema["$defs"]["UserProfile"]["properties"]["exclusions"]
     exclusions.pop("additionalProperties", None)
     exclusions.pop("propertyNames", None)
@@ -134,10 +155,17 @@ def _answer_hint(last_question_field: str | None) -> str:
             f'for yes, or {{"{key}": false}} for no. Use exactly the key "{key}" (without the '
             f'"{_EXCLUSION_FIELD_PREFIX}" prefix) and a JSON true/false, not a string.\n'
         )
+    if last_question_field in BOOLEAN_PROFILE_FIELDS:
+        return (
+            f"Field key for that question: {last_question_field}\n"
+            f"If the message answers that question, record the answer in profile_updates.{last_question_field} "
+            f"(a yes/no answer is a JSON true/false, not a string).\n"
+        )
     return (
         f"Field key for that question: {last_question_field}\n"
-        f"If the message answers that question, record the answer in profile_updates.{last_question_field} "
-        f"(a yes/no answer is a JSON true/false, not a string).\n"
+        f"If the message gives that value, record it in profile_updates.{last_question_field}. A bare "
+        f'"yes" or "no" does not give this value: then leave it null, and do not change any other field '
+        f"because of it.\n"
     )
 
 
@@ -232,6 +260,16 @@ def _validate_profile_updates(raw_updates: Any) -> UserProfile:
         return UserProfile()
 
 
+def _with_stated_land_size(updates: UserProfile, message: str) -> UserProfile:
+    """Set landholding_hectares from a clearly stated hectare/acre amount in the message
+    (see backend/services/land.py), which is exact where Gemini is not always reliable.
+    Skipped if the user said they own no land, so no contradiction is ever created."""
+    hectares = extract_land_hectares(message)
+    if hectares is None or updates.owns_cultivable_land is False:
+        return updates
+    return updates.model_copy(update={"landholding_hectares": hectares})
+
+
 def understand_message(
     message: str, last_question: str | None = None, last_question_field: str | None = None
 ) -> UnderstandingResult:
@@ -258,7 +296,7 @@ def understand_message(
     if raw_logger.isEnabledFor(logging.DEBUG):
         raw_logger.debug("raw profile_updates: %s", json.dumps(raw.profile_updates, ensure_ascii=False))
     return UnderstandingResult(
-        profile_updates=_validate_profile_updates(raw.profile_updates),
+        profile_updates=_with_stated_land_size(_validate_profile_updates(raw.profile_updates), message),
         search_query_en=raw.search_query_en,
         search_query_hi=raw.search_query_hi,
         language_style=raw.language_style,

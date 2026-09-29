@@ -39,7 +39,7 @@ scripts/      One-off CLI tools (e.g. ingest schemes into ChromaDB)
 
 ## Gemini API
 
-- **NEVER make a real Gemini API call (live, unmocked) without asking the project owner first — including "quick" manual smoke tests, verification scripts, or `scripts/chat_cli.py`.** The free tier has a small daily quota (a real 429 error observed on the old `gemini-3.8-flash` reported "limit: 20 requests per day on Free Tier"; Flash-Lite's is larger but still limited), and one unapproved test run can burn through it for the rest of the day. Use mocked tests (see `backend/tests/test_llm.py`, `test_understand.py`, `test_assistant.py`) for everything by default; only run a real call after explicit approval for that specific run.
+- **Real Gemini calls are budgeted: at most 20 per day, at least 8 seconds apart** (standing rule from the project owner; failed or timed-out calls count too). The free tier's daily quota is small (a real 429 on the old `gemini-3.8-flash` reported "limit: 20 requests per day on Free Tier"). Mocked tests (`backend/tests/`) are the default; spend real calls only where they give real signal, mainly `scripts/e2e_conversation.py` (3 calls per run), which counts every call in a local ledger (`.cache/gemini_calls.json`, gitignored) and refuses to go past the limit. When the pipeline did not change, use `--replay` (free) instead.
 - **Model:** `gemini-3.5-flash-lite` (stable; supports structured JSON output and `thinking_level`). We switched from `gemini-3.8-flash` because its free tier allows only about 20 requests per day, and every chat turn makes 2 calls (understand + reply), so that was only ~10 conversation turns a day. Flash-Lite's free tier allows about 500 requests per day (~250 turns). These limits are approximate and change; see the AI Studio rate-limit page for the current ones. Gemini 2.0 models are shut down and 2.5 models are being shut down, so never use them.
 - **Check the docs first:** before writing any Gemini code, read the current official docs at https://ai.google.dev/gemini-api/docs/latest-model. The SDK and API have changed recently, so do not rely on older examples from memory.
 - **Thinking level:** use `thinking_level` set to `"low"` for chat responses to keep replies fast.
@@ -59,6 +59,8 @@ python scripts/validate_data.py                 # validate data/schemes.json
 python scripts/ingest.py                        # (re)build the ChromaDB search index from schemes.json
 python scripts/test_search.py                    # print search results for a fixed set of test queries
 python scripts/chat_cli.py                       # chat with the assistant in the terminal
+python scripts/e2e_conversation.py               # live scripted conversation with profile checks (3 real calls)
+python scripts/e2e_conversation.py --replay      # same conversation from recorded Gemini answers (free; also run by pytest)
 ```
 
 ## Scheme data
@@ -77,6 +79,7 @@ python scripts/chat_cli.py                       # chat with the assistant in th
 
 One chat turn (`backend/services/assistant.py`'s `handle_message`) runs, in order:
 
+0. `backend/services/quick_answer.py` — if the message is a bare yes/no (English, Hinglish or Devanagari) and the last question's field key is known, it is answered in Python and step 1 is skipped (saves one Gemini call per such turn).
 1. `backend/services/understand.py` — one structured Gemini call turns the raw message into `profile_updates` (only facts actually stated, never guessed), `search_query_en`/`search_query_hi`, and `language_style`.
 2. The new `profile_updates` are merged onto the running `UserProfile` (a fact learned in an earlier turn is never overwritten by "unknown" in a later one).
 3. `search_schemes` runs with both queries; the best score per scheme is kept, and anything below 0.35 is dropped (see Step 3's report for why).
@@ -85,4 +88,4 @@ One chat turn (`backend/services/assistant.py`'s `handle_message`) runs, in orde
 
 `scripts/chat_cli.py` chats with this pipeline in the terminal, for manual testing. It prints our own warnings (e.g. a dropped profile field), `debug` shows the live profile first, and `YS_DEBUG_RAW=1` also prints Gemini's raw `profile_updates` each turn (local debugging only, off by default).
 
-Gemini's `profile_updates` are parsed leniently in `understand.py`: nulls mean "not mentioned", exclusion answers are accepted with an `exclusion:` prefix, at the top level, or as "yes"/"no" strings, and anything invalid is dropped one field (or one exclusion key) at a time, never the whole update. The schema sent to Gemini lists every exclusion key explicitly, and each turn passes the last question's field key (`next_question_field`) so Gemini knows exactly where a yes/no answer goes.
+Gemini's `profile_updates` are parsed leniently in `understand.py`: nulls mean "not mentioned", exclusion answers are accepted with an `exclusion:` prefix, at the top level, or as "yes"/"no" strings, and anything invalid is dropped one field (or one exclusion key) at a time, never the whole update. A land size stated with a clear unit ("1 hectare", "2 acres", "2 एकड़") is read in Python by `backend/services/land.py` (exact acre conversion; local units like bigha are never converted), because Flash-Lite often leaves `landholding_hectares` out. The schema sent to Gemini replaces the unsupported `exclusiveMinimum`/`exclusiveMaximum` with `minimum`/`maximum`, lists every exclusion key explicitly, and each turn passes the last question's field key (`next_question_field`) so Gemini knows exactly where a yes/no answer goes.

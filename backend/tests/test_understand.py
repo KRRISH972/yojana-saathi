@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -145,7 +146,10 @@ def test_flash_lite_real_shapes_are_kept(monkeypatch: pytest.MonkeyPatch, caplog
         _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": FLASH_LITE_TURN_TWO})
         turn_two = understand_message("No")
 
-    assert turn_one.profile_updates == UserProfile(age=35, occupation="farmer", owns_cultivable_land=True)
+    # landholding_hectares comes from the message itself (backend/services/land.py), not Gemini
+    assert turn_one.profile_updates == UserProfile(
+        age=35, occupation="farmer", owns_cultivable_land=True, landholding_hectares=1.0
+    )
     assert turn_two.profile_updates == UserProfile(exclusions={"income_tax_payer": False})
     assert caplog.text == ""
 
@@ -300,3 +304,29 @@ def test_raw_profile_updates_are_logged_only_when_debug_raw_is_on(
     with caplog.at_level("DEBUG", logger=understand.raw_logger.name):
         _profile_from(monkeypatch, raw)
     assert 'raw profile_updates: {"exclusions": {"exclusion:income_tax_payer": "no"}}' in caplog.text
+
+
+def test_schema_has_no_exclusive_bounds(mock_generate_structured: list[dict]) -> None:
+    """Regression test: Gemini does not support exclusiveMinimum, and Flash-Lite never
+    filled landholding_hectares (the one field using it). The schema sent must use
+    minimum instead, while Python still rejects 0 hectares."""
+    understand_message("I am a farmer with 1 hectare of land")
+    schema_text = json.dumps(mock_generate_structured[0]["schema"])
+    hectares = mock_generate_structured[0]["schema"]["$defs"]["UserProfile"]["properties"]["landholding_hectares"]
+
+    assert "exclusiveMinimum" not in schema_text
+    assert "exclusiveMaximum" not in schema_text
+    assert {"minimum": 0, "type": "number"} in hectares["anyOf"]
+    with pytest.raises(ValueError):
+        UserProfile(landholding_hectares=0)
+
+
+def test_numeric_question_hint_keeps_a_bare_no_from_changing_other_fields(mock_generate_structured: list[dict]) -> None:
+    """Regression test: Flash-Lite turned "No" to the hectares question into "owns no
+    land". For a number question the hint must say a bare yes/no gives no value."""
+    understand_message(
+        "No", last_question="How many hectares of cultivable land do you own?", last_question_field="landholding_hectares"
+    )
+    prompt = mock_generate_structured[0]["prompt"]
+    assert "profile_updates.landholding_hectares" in prompt
+    assert "do not change any other field" in prompt

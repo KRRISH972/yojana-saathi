@@ -1,0 +1,5 @@
+{
+  "I am a 35 year old farmer with 1 hectare of land": "{\n  \"language_style\": \"english\",\n  \"profile_updates\": {\n    \"age\": 35,\n    \"occupation\": \"farmer\",\n    \"owns_cultivable_land\": true,\n    \"state\": null\n  },\n  \"search_query_en\": \"schemes for farmers\",\n  \"search_query_hi\": \"किसानों के लिए योजनाएं\"\n}",
+  "मैं 40 साल का किसान हूँ और मेरे पास 2 एकड़ ज़मीन है": "{\n  \"language_style\": \"hindi\",\n  \"profile_updates\": {\n    \"age\": 40,\n    \"occupation\": \"farmer\",\n    \"owns_cultivable_land\": true,\n    \"state\": null\n  },\n  \"search_query_en\": \"schemes for farmers\",\n  \"search_query_hi\": \"किसानों के लिए योजनाएं\"\n}",
+  "Main 30 saal ka kisan hoon, mere paas 1 hectare zameen hai": "{\n  \"language_style\": \"hinglish\",\n  \"profile_updates\": {\n    \"age\": 30,\n    \"occupation\": \"farmer\",\n    \"owns_cultivable_land\": true,\n    \"state\": null\n  },\n  \"search_query_en\": \"Schemes for farmers\",\n  \"search_query_hi\": \"किसानों के लिए योजनाएं\"\n}"
+}
