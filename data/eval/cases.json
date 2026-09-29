@@ -1,0 +1,118 @@
+{
+  "_about": "Offline evaluation set for scripts/evaluate.py (no Gemini calls). Eligibility labels follow the official rules already entered in data/schemes.json; update them if those rules change.",
+  "search": [
+    {"query": "pension for farmers in old age", "expected": "pm-kmy"},
+    {"query": "monthly pension after age 60 for small farmers", "expected": "pm-kmy"},
+    {"query": "income support money for farmers every year", "expected": "pm-kisan"},
+    {"query": "6000 rupees per year for farmer families", "expected": "pm-kisan"},
+    {"query": "government help for farmers", "expected": "pm-kisan"},
+    {"query": "किसानों के लिए पेंशन योजना", "expected": "pm-kmy"},
+    {"query": "बुढ़ापे में हर महीने पेंशन", "expected": "pm-kmy"},
+    {"query": "किसान परिवारों को सालाना आर्थिक मदद", "expected": "pm-kisan"},
+    {"query": "खेती के लिए पैसे", "expected": "pm-kisan"},
+    {"query": "scholarship for college students", "expected": null},
+    {"query": "loan to start a small business", "expected": null},
+    {"query": "free LPG gas connection for women", "expected": null}
+  ],
+  "eligibility": [
+    {
+      "name": "young farmer, every question answered, nothing excluded",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "eligible"}
+    },
+    {
+      "name": "age 45 is above PM-KMY's joining age",
+      "profile": {"age": 45, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "age 17 is below PM-KMY's joining age; PM-KISAN has no age limit",
+      "profile": {"age": 17, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "3 hectares is above PM-KMY's 2 hectare limit",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 3.0, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "exactly 2 hectares is still allowed",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 2.0, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "eligible"}
+    },
+    {
+      "name": "owns no cultivable land",
+      "profile": {"age": 30, "owns_cultivable_land": false, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "not_eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "income-tax payer is excluded from both",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 0, "exclusions": {"ALL_NO": true, "income_tax_payer": true}},
+      "expected": {"pm-kisan": "not_eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "government employee is excluded from both",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 0, "exclusions": {"ALL_NO": true, "government_employee": true}},
+      "expected": {"pm-kisan": "not_eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "pension of Rs 10,000 a month hits PM-KISAN's pensioner exclusion",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 10000, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "not_eligible", "pm-kmy": "eligible"}
+    },
+    {
+      "name": "pension just under Rs 10,000 is fine",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 9999, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "eligible"}
+    },
+    {
+      "name": "already in another social security scheme: only PM-KMY excludes this",
+      "profile": {"age": 30, "owns_cultivable_land": true, "landholding_hectares": 1.0, "monthly_pension": 0, "exclusions": {"ALL_NO": true, "other_social_security_scheme": true}},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "only the age is known: both undecided, ask about land first",
+      "profile": {"age": 35},
+      "expected": {"pm-kisan": "possibly_eligible", "pm-kmy": "possibly_eligible"},
+      "first_question_field": "owns_cultivable_land"
+    },
+    {
+      "name": "one failing rule decides even with many unknowns",
+      "profile": {"age": 45},
+      "expected": {"pm-kisan": "possibly_eligible", "pm-kmy": "not_eligible"}
+    },
+    {
+      "name": "land known but not its size: PM-KMY needs the size",
+      "profile": {"age": 30, "owns_cultivable_land": true, "monthly_pension": 0, "exclusions": "ALL_NO"},
+      "expected": {"pm-kisan": "eligible", "pm-kmy": "possibly_eligible"},
+      "first_question_field": "landholding_hectares"
+    }
+  ],
+  "yes_no": [
+    {"message": "yes", "expected": true},
+    {"message": "No.", "expected": false},
+    {"message": "haan", "expected": true},
+    {"message": "haan ji", "expected": true},
+    {"message": "nahi", "expected": false},
+    {"message": "nhi", "expected": false},
+    {"message": "na", "expected": false},
+    {"message": "हाँ", "expected": true},
+    {"message": "हां", "expected": true},
+    {"message": "नहीं", "expected": false},
+    {"message": "नहीं।", "expected": false},
+    {"message": "no, but my wife pays tax", "expected": null},
+    {"message": "nahi pata", "expected": null},
+    {"message": "maybe", "expected": null}
+  ],
+  "land": [
+    {"message": "I am a 35 year old farmer with 1 hectare of land", "expected_hectares": 1.0},
+    {"message": "I have 3 acres", "expected_hectares": 1.214058},
+    {"message": "मेरे पास 2 एकड़ ज़मीन है", "expected_hectares": 0.809372},
+    {"message": "mere paas 1.5 hectare zameen hai", "expected_hectares": 1.5},
+    {"message": "मेरे पास २ हेक्टेयर ज़मीन है", "expected_hectares": 2.0},
+    {"message": "I have 5 bigha of land", "expected_hectares": null},
+    {"message": "mere paas 10 kanal zameen hai", "expected_hectares": null},
+    {"message": "I have 2 acres and my brother has 3 acres", "expected_hectares": null},
+    {"message": "I am 35 years old", "expected_hectares": null}
+  ]
+}

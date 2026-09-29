@@ -1,0 +1,64 @@
+# Runs on every push and pull request. Needs no secrets: every test mocks Gemini or replays
+# recorded answers, and GEMINI_API_KEY is a dummy, so an accidental real call can only fail.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GEMINI_API_KEY: ci-dummy-key-real-calls-must-fail
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      # CPU-only PyTorch first: the default Linux wheel pulls in gigabytes of CUDA libraries.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-paraphrase-multilingual-MiniLM-L12-v2
+
+      - name: Validate scheme data
+        run: python scripts/validate_data.py
+
+      - name: Build the search index
+        run: python scripts/ingest.py
+
+      - name: Python tests (includes the replayed e2e conversation and the evaluation)
+        run: pytest -q
+
+      - name: Evaluation report
+        run: python scripts/evaluate.py
+
+      - name: Replay the e2e conversation through the HTTP API
+        run: python scripts/e2e_conversation.py --replay --via-api
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Web UI unit tests
+        run: node --test "frontend/tests/*.test.js"

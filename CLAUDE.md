@@ -62,7 +62,7 @@ python scripts/chat_cli.py                       # chat with the assistant in th
 python scripts/e2e_conversation.py               # live scripted conversation with profile checks (3 real calls)
 python scripts/e2e_conversation.py --replay      # same conversation from recorded Gemini answers (free; also run by pytest)
 node --test "frontend/tests/*.test.js"          # unit tests for the web UI's pure logic (frontend/public/js/logic.js)
-.cache	ailwindcss.exe -i frontend/src/input.css -o frontend/public/css/app.css --minify   # rebuild CSS after changing classes
+.cache\tailwindcss.exe -i frontend/src/input.css -o frontend/public/css/app.css --minify   # rebuild CSS after changing classes
 ```
 
 ## Scheme data
