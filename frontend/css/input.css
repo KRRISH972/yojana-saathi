@@ -1,0 +1,17 @@
+/* Tailwind source. Build the committed, minified frontend/css/app.css with:
+     .cache\tailwindcss.exe -i frontend/css/input.css -o frontend/css/app.css --minify
+   (standalone Tailwind CLI; see CLAUDE.md). Only classes used in these files are kept. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../js/app.js";
+@source "../js/logic.js";
+
+/* Devanagari-friendly system fonts only: no web-font download on slow networks. */
+@theme {
+  --font-sans: system-ui, "Noto Sans Devanagari", "Nirmala UI", "Mangal", sans-serif;
+}
+
+/* The `hidden` attribute must win over display utilities like `flex`. */
+[hidden] {
+  display: none !important;
+}
