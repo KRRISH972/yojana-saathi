@@ -5,8 +5,8 @@
   var TEXT = {
     hi: {
       title: "योजना साथी",
-      subtitle: "सरकारी योजनाएँ खोजें, आसान भाषा में",
-      placeholder: "अपना सवाल लिखें या बोलें…",
+      subtitle: "सरकारी योजनाएँ खोजें",
+      placeholder: "लिखें या बोलें…",
       send: "भेजें",
       mic: "बोलें",
       listening: "सुन रहा हूँ… बोलिए",
@@ -39,8 +39,8 @@
     },
     en: {
       title: "Yojana Saathi",
-      subtitle: "Find government schemes, in simple words",
-      placeholder: "Type or speak your question…",
+      subtitle: "Find government schemes",
+      placeholder: "Type or speak…",
       send: "Send",
       mic: "Speak",
       listening: "Listening… please speak",

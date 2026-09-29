@@ -73,7 +73,7 @@
 
   function speakButton(text, languageStyle) {
     var t = L.texts(session.lang);
-    var b = node("button", "mt-2 text-sm text-emerald-800 underline", "🔊 " + t.listen);
+    var b = node("button", "mt-2 block py-1 text-sm text-emerald-800 underline","🔊 " + t.listen);
     b.type = "button";
     b.addEventListener("click", function () {
       speak(text, languageStyle);
@@ -84,13 +84,14 @@
   function renderCard(card) {
     var t = L.texts(session.lang);
     var badge = L.statusBadge(card.status, session.lang);
-    var box = node("article", "mt-2 rounded-xl border bg-white p-3 shadow-sm");
+    var box = node("article", "mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm");
     box.appendChild(node("h3", "font-semibold text-slate-900", L.schemeName(card, session.lang)));
     box.appendChild(node("p", "mt-1 inline-block rounded-full border px-2 py-0.5 text-sm " + badge.className, badge.label));
     if (card.status !== "not_eligible") {
-      var benefits = node("p", "mt-2 text-sm text-slate-700");
-      benefits.appendChild(node("span", "font-medium", t.benefits + ": "));
-      benefits.appendChild(document.createTextNode(card.benefits));
+      // Benefit text can be long; fold it so several cards still fit on a small screen.
+      var benefits = node("details", "mt-2 text-sm text-slate-700");
+      benefits.appendChild(node("summary", "cursor-pointer font-medium text-emerald-800", t.benefits));
+      benefits.appendChild(node("p", "mt-1", card.benefits));
       box.appendChild(benefits);
       var link = node("a", "mt-2 inline-block rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white", t.official + " ↗");
       link.href = card.official_url;
@@ -108,7 +109,7 @@
     var row = node("div", "flex " + (mine ? "justify-end" : "justify-start"));
     var bubble = node(
       "div",
-      "max-w-[85%] whitespace-pre-line rounded-2xl px-4 py-3 text-base leading-relaxed " +
+      "max-w-[85%] whitespace-pre-line break-words rounded-2xl px-4 py-3 text-base leading-relaxed " +
         (mine ? "bg-emerald-700 text-white" : message.error ? "bg-red-50 text-red-900 border border-red-200" : "bg-white text-slate-900 shadow-sm")
     );
     appendText(bubble, mine ? message.text : L.cleanReply(message.text));

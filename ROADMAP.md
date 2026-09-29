@@ -15,6 +15,6 @@ fix until green, commit and push, then tick it off here.
 ## Remaining
 
 - [x] **Step 5 — FastAPI backend.** `POST /api/chat` (stateless: the browser keeps the conversation state and sends it back each turn), `GET /api/health`, friendly error responses for Gemini failures and rate limits, a per-visitor rate limit to protect the free quota, API tests, and the e2e conversation run through the API.
-- [ ] **Step 6 — Mobile-first web UI.** Plain HTML + Tailwind + vanilla JS served by FastAPI; chat screen, scheme result cards with official links, Hindi/English voice input (Web Speech recognition) and spoken replies (speech synthesis), works on low-end phones and slow networks.
+- [x] **Step 6 — Mobile-first web UI.** Plain HTML + Tailwind + vanilla JS served by FastAPI; chat screen, scheme result cards with official links, Hindi/English voice input (Web Speech recognition) and spoken replies (speech synthesis), works on low-end phones and slow networks.
 - [ ] **Step 7 — Evaluation + CI.** An offline evaluation set (understanding, yes/no shortcut, land parsing, eligibility, search) with a printed score report, and GitHub Actions running the tests and the replayed conversation on every push.
 - [ ] **Step 8 — Docker + Hugging Face Spaces + README.** Dockerfile (embedding model baked into the image), Spaces config, and a README with architecture, setup, and screenshots. Creating the Hugging Face account/Space and adding the API key as a Space secret is done by the project owner.

@@ -1,10 +1,10 @@
-/* Tailwind source. Build the committed, minified frontend/css/app.css with:
-     .cache\tailwindcss.exe -i frontend/css/input.css -o frontend/css/app.css --minify
+/* Tailwind source. Build the committed, minified frontend/public/css/app.css with:
+     .cache\tailwindcss.exe -i frontend/src/input.css -o frontend/public/css/app.css --minify
    (standalone Tailwind CLI; see CLAUDE.md). Only classes used in these files are kept. */
 @import "tailwindcss" source(none);
-@source "../index.html";
-@source "../js/app.js";
-@source "../js/logic.js";
+@source "../public/index.html";
+@source "../public/js/app.js";
+@source "../public/js/logic.js";
 
 /* Devanagari-friendly system fonts only: no web-font download on slow networks. */
 @theme {

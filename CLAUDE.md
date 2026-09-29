@@ -61,6 +61,8 @@ python scripts/test_search.py                    # print search results for a fi
 python scripts/chat_cli.py                       # chat with the assistant in the terminal
 python scripts/e2e_conversation.py               # live scripted conversation with profile checks (3 real calls)
 python scripts/e2e_conversation.py --replay      # same conversation from recorded Gemini answers (free; also run by pytest)
+node --test "frontend/tests/*.test.js"          # unit tests for the web UI's pure logic (frontend/public/js/logic.js)
+.cache	ailwindcss.exe -i frontend/src/input.css -o frontend/public/css/app.css --minify   # rebuild CSS after changing classes
 ```
 
 ## Scheme data
@@ -94,6 +96,16 @@ One chat turn (`backend/services/assistant.py`'s `handle_message`) runs, in orde
 - `backend/services/rate_limit.py` applies an in-memory per-visitor and a global per-minute limit (`CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_GLOBAL_RATE_LIMIT_PER_MINUTE`) so a public deployment cannot drain the free Gemini quota.
 - Startup (`lifespan`) calls `retriever.ensure_ready()`: loads the embedding model and opens the search index, building it from `data/schemes.json` if it is missing.
 - `scripts/e2e_conversation.py --via-api` runs the scripted conversation through `POST /api/chat`; `backend/tests/test_e2e_replay.py` replays it both in-process and via the API.
+
+## Web UI (Step 6)
+
+- Served by FastAPI from `frontend/public/` at `/` (API routes are registered first, so they win). Only `public/` is served; `frontend/src/input.css` (Tailwind source) and `frontend/tests/` stay private.
+- Plain HTML + vanilla JS, no frameworks: `js/logic.js` holds pure, Node-tested helpers (UI texts in Hindi/English, error-code messages, yes/no quick-reply buttons, voice language choice, reply cleaning, safe link splitting); `js/app.js` does the DOM, `fetch("/api/chat")`, and voice.
+- **CSS is precompiled** with the Tailwind v4 standalone CLI (downloaded once to the gitignored `.cache/tailwindcss.exe`) and the minified `public/css/app.css` is committed, so the site has no runtime build step and no heavy CDN script on low-end phones. Rebuild it after adding or changing Tailwind classes.
+- Server text is only ever inserted with `textContent` (never `innerHTML`); a strict Content-Security-Policy allows only our own files (framing allowed for https://huggingface.co); responses are gzipped; no external fonts or scripts. `backend/tests/test_frontend.py` enforces these, plus a 60 KB page-weight budget.
+- The conversation state lives in the browser's `sessionStorage` (cleared when the tab closes, which suits shared phones) and is sent with each message.
+- Voice: Web Speech recognition (`hi-IN`/`en-IN` from the UI language) auto-sends what was heard; replies to voice input are spoken with speech synthesis (`hi-IN` unless the reply is English), links are not read aloud, and every reply has a "listen" button. The mic button is hidden where the browser has no speech recognition.
+- Yes/no questions show big हाँ/नहीं (Yes/No) buttons that send a bare yes/no, which the server answers without a Gemini call.
 
 `scripts/chat_cli.py` chats with this pipeline in the terminal, for manual testing. It prints our own warnings (e.g. a dropped profile field), `debug` shows the live profile first, and `YS_DEBUG_RAW=1` also prints Gemini's raw `profile_updates` each turn (local debugging only, off by default).
 
