@@ -6,10 +6,11 @@ write the reply. Gemini never decides eligibility — it only explains what Pyth
 from __future__ import annotations
 
 import json
+import logging
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.models.scheme import Scheme
 from backend.models.user_profile import UserProfile
@@ -21,6 +22,8 @@ from backend.services.understand import understand_message
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCHEMES_JSON = PROJECT_ROOT / "data" / "schemes.json"
 SYSTEM_PROMPT_PATH = PROJECT_ROOT / "backend" / "prompts" / "system_prompt.md"
+
+logger = logging.getLogger(__name__)
 
 SEARCH_TOP_K = 5
 SEARCH_SCORE_THRESHOLD = 0.35  # below this, a match is treated as "not actually relevant" (see Step 3)
@@ -55,20 +58,47 @@ def _load_all_schemes() -> tuple[Scheme, ...]:
     return tuple(Scheme.model_validate(entry) for entry in entries)
 
 
+def _clear_contradicted_fields(merged: dict[str, object], updated_fields: set[str]) -> None:
+    """Clear any older value that contradicts a newer answer, in place: the newer answer wins.
+
+    ``updated_fields`` are the fields stated this turn. ``updates`` is itself a valid
+    UserProfile, so the two sides of a contradiction can never both be new — one side is
+    always an older value, and that is the one cleared (back to "unknown", never guessed).
+    Add a rule here for every new cross-field check added to UserProfile.
+    """
+    if merged["owns_cultivable_land"] is False and merged["landholding_hectares"] is not None:
+        if "owns_cultivable_land" in updated_fields:
+            merged["landholding_hectares"] = None  # "I own no land" now overrides an older land size
+        else:
+            merged["owns_cultivable_land"] = None  # a new land size overrides an older "no land"
+
+
 def _merge_profile(base: UserProfile, updates: UserProfile) -> UserProfile:
     """Copy every fact stated in ``updates`` onto ``base``.
 
     A field left ``None`` in ``updates`` (or an exclusion category with no answer) means
-    "not mentioned this turn" and must never overwrite something already known.
+    "not mentioned this turn" and must never overwrite something already known. If a new
+    answer contradicts an older one, the newer answer wins and the older value is cleared.
+    As a last-resort safety net, if the merged profile still fails validation, the previous
+    profile is kept and a warning is logged, so one bad turn never crashes the conversation.
     """
     merged = base.model_dump()
+    updated_fields: set[str] = set()
     for field, value in updates.model_dump().items():
         if field == "exclusions":
             new_answers = {category: answer for category, answer in value.items() if answer is not None}
             merged["exclusions"] = {**merged.get("exclusions", {}), **new_answers}
         elif value is not None:
             merged[field] = value
-    return UserProfile.model_validate(merged)
+            updated_fields.add(field)
+    _clear_contradicted_fields(merged, updated_fields)
+    try:
+        return UserProfile.model_validate(merged)
+    except ValidationError as exc:
+        # Log only field names, never values: they come from what the user typed.
+        fields = sorted({".".join(str(part) for part in err["loc"]) or "(profile)" for err in exc.errors()})
+        logger.warning("Profile merge failed validation on %s; keeping the previous profile.", ", ".join(fields))
+        return base
 
 
 def _search_both_queries(query_en: str, query_hi: str, top_k: int = SEARCH_TOP_K) -> list[SchemeMatch]:

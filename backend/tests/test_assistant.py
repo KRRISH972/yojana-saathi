@@ -203,3 +203,68 @@ def test_answer_only_turn_keeps_earlier_matched_schemes(monkeypatch: pytest.Monk
     assert turn_two.next_question is not None
     assert turn_two.next_question != turn_one.next_question
     assert "income tax" not in turn_two.next_question.lower()
+
+
+def _set_understanding(monkeypatch: pytest.MonkeyPatch, updates: UserProfile) -> None:
+    """Make the next understand_message call return ``updates`` as an answer-only turn."""
+    monkeypatch.setattr(
+        assistant, "understand_message",
+        lambda message, last_question=None: UnderstandingResult(
+            profile_updates=updates, search_query_en="", search_query_hi="", language_style=LanguageStyle.ENGLISH
+        ),
+    )  # fmt: skip
+
+
+def test_no_land_answer_clears_an_earlier_land_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test for a real bug: "I have 2 hectares" (ownership still unknown), then
+    "no" to the land-ownership question, used to crash the turn with a ValidationError
+    (hectares set but owns_cultivable_land False). The newer "no" must win instead."""
+    _patch_search(monkeypatch, [])
+    _set_understanding(monkeypatch, UserProfile(landholding_hectares=2.0))
+    turn_one = assistant.handle_message("I have 2 hectares", matched_scheme_ids=["pm-kisan"])
+    assert turn_one.profile.landholding_hectares == 2.0
+    assert turn_one.profile.owns_cultivable_land is None
+
+    _set_understanding(monkeypatch, UserProfile(owns_cultivable_land=False))
+    turn_two = assistant.handle_message(
+        "no", profile=turn_one.profile, last_question=turn_one.next_question,
+        matched_scheme_ids=turn_one.matched_scheme_ids,
+    )  # fmt: skip
+
+    assert turn_two.profile.owns_cultivable_land is False
+    assert turn_two.profile.landholding_hectares is None  # contradicted older value cleared
+    assert [r.scheme_id for r in turn_two.eligibility.not_eligible] == ["pm-kisan"]
+
+
+def test_new_land_size_clears_an_earlier_no_land_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The reverse contradiction: "I don't own land", then later "I have 3 hectares". The
+    newer land size wins; the older "no" is cleared back to unknown rather than guessed."""
+    _patch_search(monkeypatch, [])
+    _set_understanding(monkeypatch, UserProfile(owns_cultivable_land=False))
+    turn_one = assistant.handle_message("I don't own any land")
+
+    _set_understanding(monkeypatch, UserProfile(landholding_hectares=3.0))
+    turn_two = assistant.handle_message("Actually I have 3 hectares", profile=turn_one.profile)
+
+    assert turn_two.profile.landholding_hectares == 3.0
+    assert turn_two.profile.owns_cultivable_land is None
+
+
+def test_invalid_merge_keeps_previous_profile_and_logs_no_user_text(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Safety net: if a merge still fails validation, the turn keeps the previous profile,
+    logs a short warning without any user text, and the conversation carries on."""
+    _patch_search(monkeypatch, [])
+    previous = UserProfile(age=30, state="Bihar")
+    _set_understanding(monkeypatch, UserProfile.model_construct(age=500))  # bypasses validation
+
+    with caplog.at_level("WARNING", logger=assistant.__name__):
+        result = assistant.handle_message("my-private-message-text", profile=previous)
+
+    assert result.profile == previous
+    assert result.reply_text == "Here is what I found."
+    assert "keeping the previous profile" in caplog.text
+    assert "age" in caplog.text
+    assert "my-private-message-text" not in caplog.text
+    assert "500" not in caplog.text
