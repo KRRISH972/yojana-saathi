@@ -11,6 +11,7 @@ Requires scripts/ingest.py to have been run at least once, and GEMINI_API_KEY se
 
 from __future__ import annotations
 
+import io
 import sys
 from pathlib import Path
 
@@ -22,8 +23,21 @@ from backend.services.assistant import ChatTurnResult, handle_message  # noqa: E
 from backend.services.llm import GeminiError, GeminiRateLimitError  # noqa: E402
 
 
+def _use_utf8_console() -> None:
+    """Switch stdout and stdin to UTF-8.
+
+    The Windows console defaults to a legacy code page (e.g. cp1252) that cannot encode
+    Devanagari, so printing a Hindi reply would crash with UnicodeEncodeError and typed
+    Hindi input would arrive garbled.
+    """
+    for stream in (sys.stdout, sys.stdin):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
+
+
 def main() -> int:
     """Run an interactive chat loop against the assistant."""
+    _use_utf8_console()
     print("Yojana Saathi (terminal chat). Type 'exit' to quit, 'debug' to inspect state.\n")
 
     profile = UserProfile()
