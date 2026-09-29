@@ -2,25 +2,38 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
+from backend.models.user_profile import UserProfile
 from backend.services import understand
 from backend.services.understand import LanguageStyle, UnderstandingResult, understand_message
 
+_GOOD_RESPONSE: dict[str, Any] = {
+    "search_query_en": "pension for farmers",
+    "search_query_hi": "किसानों के लिए पेंशन",
+    "language_style": "hindi",
+}
 
-@pytest.fixture
-def mock_generate_structured(monkeypatch: pytest.MonkeyPatch):
-    """Patch understand.generate_structured to return a canned result and record its call."""
+
+def _patch_gemini(monkeypatch: pytest.MonkeyPatch, response: dict[str, Any]) -> list[dict]:
+    """Patch understand.generate_structured to parse ``response`` with the requested model,
+    as the real function would parse Gemini's JSON, and record each call."""
     calls: list[dict] = []
 
-    def fake(prompt: str, response_model, system_instruction: str | None = None):
-        calls.append({"prompt": prompt, "response_model": response_model, "system_instruction": system_instruction})
-        return UnderstandingResult(
-            search_query_en="pension for farmers", search_query_hi="किसानों के लिए पेंशन", language_style="hindi"
-        )
+    def fake(prompt: str, response_model, system_instruction: str | None = None, schema=None):
+        calls.append({"prompt": prompt, "system_instruction": system_instruction, "schema": schema})
+        return response_model.model_validate(response)
 
     monkeypatch.setattr(understand, "generate_structured", fake)
     return calls
+
+
+@pytest.fixture
+def mock_generate_structured(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Patch Gemini to return a canned, valid response and record its call."""
+    return _patch_gemini(monkeypatch, _GOOD_RESPONSE)
 
 
 def test_understand_message_returns_the_gemini_result(mock_generate_structured: list[dict]) -> None:
@@ -30,12 +43,13 @@ def test_understand_message_returns_the_gemini_result(mock_generate_structured: 
     assert result.language_style is LanguageStyle.HINDI
 
 
-def test_prompt_includes_the_message_and_response_model(mock_generate_structured: list[dict]) -> None:
-    """The prompt sent to Gemini must contain the user's message and target the right schema."""
+def test_prompt_includes_the_message_and_response_schema(mock_generate_structured: list[dict]) -> None:
+    """The prompt sent to Gemini must contain the user's message, and Gemini must be asked
+    for UnderstandingResult's exact (strict) schema, even though parsing is lenient."""
     understand_message("मुझे किसान पेंशन चाहिए")
     call = mock_generate_structured[0]
     assert "मुझे किसान पेंशन चाहिए" in call["prompt"]
-    assert call["response_model"] is UnderstandingResult
+    assert call["schema"] == UnderstandingResult.model_json_schema()
     assert call["system_instruction"] is not None
 
 
@@ -64,3 +78,51 @@ def test_system_instruction_only_allows_converting_acres_and_hectares(mock_gener
         assert local_unit in instruction
     assert "do NOT convert" in instruction
     assert "leave landholding_hectares null" in instruction.lower()
+
+
+def test_valid_profile_updates_are_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A valid profile_updates object comes through as a real UserProfile."""
+    _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": {"age": 35, "owns_cultivable_land": True}})
+    result = understand_message("मेरी उम्र 35 है और मेरे पास ज़मीन है")
+    assert result.profile_updates == UserProfile(age=35, owns_cultivable_land=True)
+
+
+def test_contradictory_profile_updates_are_dropped_but_queries_kept(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Regression test: Gemini returning "no land" and a land size in one response used
+    to crash the whole turn with a ValidationError. Now the profile updates are ignored
+    for this turn, while the search queries and language style are still used."""
+    _patch_gemini(
+        monkeypatch,
+        {**_GOOD_RESPONSE, "profile_updates": {"owns_cultivable_land": False, "landholding_hectares": 2.0}},
+    )
+
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        result = understand_message("my-private-message-text")
+
+    assert result.profile_updates == UserProfile()
+    assert result.search_query_en == "pension for farmers"
+    assert result.search_query_hi == "किसानों के लिए पेंशन"
+    assert result.language_style is LanguageStyle.HINDI
+    assert "ignoring them this turn" in caplog.text
+    assert "my-private-message-text" not in caplog.text
+
+
+def test_invalid_profile_log_names_fields_but_never_values(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The warning names the real field that failed, but never its value, and never a
+    made-up key (which could have been copied from what the user typed)."""
+    _patch_gemini(
+        monkeypatch, {**_GOOD_RESPONSE, "profile_updates": {"age": 500, "ramesh_from_sitapur": "x"}}
+    )
+
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        result = understand_message("hello")
+
+    assert result.profile_updates == UserProfile()
+    assert "age" in caplog.text
+    assert "(unknown field)" in caplog.text
+    assert "500" not in caplog.text
+    assert "ramesh_from_sitapur" not in caplog.text

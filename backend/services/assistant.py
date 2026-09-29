@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from backend.models.scheme import Scheme
-from backend.models.user_profile import UserProfile
+from backend.models.user_profile import UserProfile, invalid_field_names
 from backend.services.eligibility import EligibilityReport, EligibilityStatus, SchemeResult, check_eligibility
 from backend.services.llm import generate_text
 from backend.services.retriever import SchemeMatch, search_schemes
@@ -96,8 +96,8 @@ def _merge_profile(base: UserProfile, updates: UserProfile) -> UserProfile:
         return UserProfile.model_validate(merged)
     except ValidationError as exc:
         # Log only field names, never values: they come from what the user typed.
-        fields = sorted({".".join(str(part) for part in err["loc"]) or "(profile)" for err in exc.errors()})
-        logger.warning("Profile merge failed validation on %s; keeping the previous profile.", ", ".join(fields))
+        fields = ", ".join(invalid_field_names(exc))
+        logger.warning("Profile merge failed validation on %s; keeping the previous profile.", fields)
         return base
 
 

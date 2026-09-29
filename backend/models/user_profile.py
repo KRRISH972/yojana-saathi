@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from backend.models.scheme import INDIAN_STATES_AND_UTS, ExclusionCategory, Gender, Occupation, SocialCategory
 
@@ -60,3 +60,20 @@ class UserProfile(BaseModel):
     def exclusion_answer(self, category: ExclusionCategory) -> bool | None:
         """Return the stored yes/no answer for an exclusion category, or None if unknown."""
         return self.exclusions.get(category)
+
+
+def invalid_field_names(error: ValidationError) -> list[str]:
+    """Top-level UserProfile field names a validation error is about, safe to log.
+
+    Never includes values, and never includes a key that is not a real field name (such a
+    key, or a nested dict key, could have been made up from what the user typed). A
+    cross-field error with no single field is reported as "(profile)".
+    """
+    names: set[str] = set()
+    for err in error.errors():
+        first = err["loc"][0] if err["loc"] else None
+        if first is None:
+            names.add("(profile)")
+        else:
+            names.add(first if first in UserProfile.model_fields else "(unknown field)")
+    return sorted(names)

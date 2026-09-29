@@ -4,12 +4,16 @@ structured data the rest of the app can act on, without Gemini ever deciding eli
 
 from __future__ import annotations
 
+import logging
 from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from backend.models.user_profile import UserProfile
+from backend.models.user_profile import UserProfile, invalid_field_names
 from backend.services.llm import generate_structured
+
+logger = logging.getLogger(__name__)
 
 _SYSTEM_INSTRUCTION = """\
 You are the understanding layer of Yojana Saathi, an assistant that helps Indian \
@@ -71,12 +75,50 @@ class UnderstandingResult(BaseModel):
     language_style: LanguageStyle = Field(description="The language style to reply in.")
 
 
+class _RawUnderstanding(BaseModel):
+    """The same response as UnderstandingResult, but with profile_updates left unvalidated,
+    so a bad profile can be dropped without losing the search queries and language style."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile_updates: Any = None
+    search_query_en: str = ""
+    search_query_hi: str = ""
+    language_style: LanguageStyle
+
+
+def _validate_profile_updates(raw_updates: Any) -> UserProfile:
+    """Validate Gemini's profile_updates, or return an empty profile if they are invalid
+    (e.g. "no land" and a land size in the same message), logging only field names."""
+    try:
+        return UserProfile.model_validate(raw_updates if raw_updates is not None else {})
+    except ValidationError as exc:
+        fields = ", ".join(invalid_field_names(exc))
+        logger.warning("Understand call returned invalid profile_updates on %s; ignoring them this turn.", fields)
+        return UserProfile()
+
+
 def understand_message(message: str, last_question: str | None = None) -> UnderstandingResult:
     """Run the one structured Gemini call for a single user message.
 
     ``last_question`` should be the exact question text the assistant most recently asked
     (from EligibilityReport.questions), if any — it lets a short reply like "yes" or
     "2 hectares" be attributed to the right UserProfile field.
+
+    Gemini is asked for UnderstandingResult's exact schema, but the reply is parsed in two
+    steps: if only profile_updates is invalid, this turn is treated as having no profile
+    updates, and the search queries and language style are still used.
     """
     prompt = _PROMPT_TEMPLATE.format(last_question=last_question or "(none)", message=message)
-    return generate_structured(prompt, response_model=UnderstandingResult, system_instruction=_SYSTEM_INSTRUCTION)
+    raw = generate_structured(
+        prompt,
+        response_model=_RawUnderstanding,
+        system_instruction=_SYSTEM_INSTRUCTION,
+        schema=UnderstandingResult.model_json_schema(),
+    )
+    return UnderstandingResult(
+        profile_updates=_validate_profile_updates(raw.profile_updates),
+        search_query_en=raw.search_query_en,
+        search_query_hi=raw.search_query_hi,
+        language_style=raw.language_style,
+    )

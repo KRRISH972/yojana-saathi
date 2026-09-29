@@ -146,8 +146,18 @@ def generate_text(prompt: str, system_instruction: str | None = None) -> str:
     return interaction.output_text  # type: ignore[attr-defined]
 
 
-def generate_structured(prompt: str, response_model: type[T], system_instruction: str | None = None) -> T:
-    """Send one prompt to Gemini and parse its JSON reply into ``response_model``."""
+def generate_structured(
+    prompt: str,
+    response_model: type[T],
+    system_instruction: str | None = None,
+    schema: dict[str, object] | None = None,
+) -> T:
+    """Send one prompt to Gemini and parse its JSON reply into ``response_model``.
+
+    ``schema`` is the JSON schema Gemini is asked to follow; it defaults to
+    ``response_model``'s own. Pass a stricter one to parse leniently but still ask Gemini
+    for the exact shape (see backend/services/understand.py).
+    """
     kwargs: dict[str, object] = {
         "model": get_settings().gemini_model,
         "input": prompt,
@@ -155,7 +165,7 @@ def generate_structured(prompt: str, response_model: type[T], system_instruction
         "response_format": {
             "type": "text",
             "mime_type": "application/json",
-            "schema": response_model.model_json_schema(),
+            "schema": schema if schema is not None else response_model.model_json_schema(),
         },
     }
     if system_instruction is not None:

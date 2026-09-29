@@ -165,3 +165,19 @@ def test_generate_structured_parses_json_into_model(fake_client: MagicMock) -> N
     _, kwargs = fake_client.interactions.create.call_args
     assert kwargs["response_format"]["mime_type"] == "application/json"
     assert kwargs["response_format"]["schema"] == Animal.model_json_schema()
+
+
+def test_generate_structured_can_send_a_different_schema(fake_client: MagicMock) -> None:
+    """An explicit ``schema`` is what Gemini is asked for, while parsing still uses response_model."""
+    from pydantic import BaseModel
+
+    class Loose(BaseModel):
+        name: str
+
+    strict_schema = {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
+    fake_client.interactions.create.return_value = SimpleNamespace(output_text='{"name": "dog"}')
+    result = llm.generate_structured("describe a dog", response_model=Loose, schema=strict_schema)
+
+    assert result == Loose(name="dog")
+    _, kwargs = fake_client.interactions.create.call_args
+    assert kwargs["response_format"]["schema"] == strict_schema
