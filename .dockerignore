@@ -1,0 +1,29 @@
+# Secrets: never copy into the image (on Hugging Face, GEMINI_API_KEY is a Space secret).
+.env
+.env.*
+!.env.example
+
+# Local environments, caches and tools (the Tailwind CLI alone is 100+ MB)
+venv/
+.venv/
+.cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Rebuilt inside the image
+data/chroma/
+
+# Not needed to run the app
+.git/
+.github/
+backend/tests/
+frontend/tests/
+frontend/src/
+data/sources/
+data/eval/
+# Root-level docs only: "*.md" does not match backend/prompts/system_prompt.md, which the app needs.
+*.md
+!README.md

@@ -62,3 +62,32 @@ jobs:
 
       - name: Web UI unit tests
         run: node --test "frontend/tests/*.test.js"
+
+  # Builds the same image Hugging Face Spaces builds, starts it, and checks it serves the
+  # UI and the API. The dummy key means no real Gemini call can succeed.
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t yojana-saathi .
+
+      - name: The image contains no secrets or local files
+        run: |
+          docker run --rm yojana-saathi sh -c 'test ! -e .env && test ! -e venv && test ! -e .cache/tailwindcss.exe && test -f backend/prompts/system_prompt.md && test -d data/chroma'
+
+      - name: Start the container and smoke-test it
+        run: |
+          docker run -d --name ys -p 7860:7860 -e GEMINI_API_KEY=ci-dummy-key-real-calls-must-fail yojana-saathi
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:7860/api/health && break; sleep 2; done
+          curl -fs http://127.0.0.1:7860/api/health | grep -q '"ok"'
+          curl -fs http://127.0.0.1:7860/ | grep -q 'id="composer"'
+          curl -fs http://127.0.0.1:7860/css/app.css > /dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:7860/api/chat -H 'content-type: application/json' -d '{"message":""}')
+          test "$code" = "422"
+
+      - name: Container logs
+        if: always()
+        run: docker logs ys || true
