@@ -6,6 +6,9 @@ Usage (from the project root):
 Type 'exit' or 'quit' to stop. Type 'debug' to print the current profile and eligibility
 report as JSON (handy while developing).
 
+Set YS_DEBUG_RAW=1 (in .env or the environment) to also print the raw profile_updates
+JSON Gemini returned each turn. Local debugging only; off by default.
+
 Requires scripts/ingest.py to have been run at least once, and GEMINI_API_KEY set in .env.
 """
 
@@ -20,9 +23,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from backend.app.config import get_settings  # noqa: E402
 from backend.models.user_profile import UserProfile  # noqa: E402
 from backend.services.assistant import ChatTurnResult, handle_message  # noqa: E402
 from backend.services.llm import GeminiError, GeminiRateLimitError  # noqa: E402
+from backend.services.understand import raw_logger  # noqa: E402
 
 
 def _use_utf8_console() -> None:
@@ -37,14 +42,19 @@ def _use_utf8_console() -> None:
             stream.reconfigure(encoding="utf-8")
 
 
-def _show_backend_warnings() -> None:
+def _configure_logging(debug_raw: bool) -> None:
     """Print warnings from our own code (e.g. dropped profile fields) to the console, so a
-    silently ignored answer is visible while testing. Library loggers are left alone."""
+    silently ignored answer is visible while testing. Library loggers are left alone.
+
+    With ``debug_raw`` (YS_DEBUG_RAW=1), also print Gemini's raw profile_updates each turn.
+    """
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[warning] %(name)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
     backend_logger = logging.getLogger("backend")
     backend_logger.addHandler(handler)
     backend_logger.setLevel(logging.WARNING)
+    if debug_raw:
+        raw_logger.setLevel(logging.DEBUG)
 
 
 def _print_debug(
@@ -65,11 +75,12 @@ def _print_debug(
 def main() -> int:
     """Run an interactive chat loop against the assistant."""
     _use_utf8_console()
-    _show_backend_warnings()
+    _configure_logging(debug_raw=get_settings().ys_debug_raw)
     print("Yojana Saathi (terminal chat). Type 'exit' to quit, 'debug' to inspect state.\n")
 
     profile = UserProfile()
     last_question: str | None = None
+    last_question_field: str | None = None
     matched_scheme_ids: list[str] = []
     last_result: ChatTurnResult | None = None
 
@@ -90,7 +101,11 @@ def main() -> int:
 
         try:
             result = handle_message(
-                message, profile=profile, last_question=last_question, matched_scheme_ids=matched_scheme_ids
+                message,
+                profile=profile,
+                last_question=last_question,
+                matched_scheme_ids=matched_scheme_ids,
+                last_question_field=last_question_field,
             )
         except GeminiRateLimitError as exc:
             print(f"Saathi: {exc}\n")
@@ -101,6 +116,7 @@ def main() -> int:
 
         profile = result.profile
         last_question = result.next_question
+        last_question_field = result.next_question_field
         matched_scheme_ids = result.matched_scheme_ids
         last_result = result
         print(f"Saathi: {result.reply_text}\n")

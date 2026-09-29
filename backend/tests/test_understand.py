@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from backend.models.scheme import ExclusionCategory
 from backend.models.user_profile import UserProfile
 from backend.services import understand
 from backend.services.understand import LanguageStyle, UnderstandingResult, understand_message
@@ -45,11 +46,11 @@ def test_understand_message_returns_the_gemini_result(mock_generate_structured: 
 
 def test_prompt_includes_the_message_and_response_schema(mock_generate_structured: list[dict]) -> None:
     """The prompt sent to Gemini must contain the user's message, and Gemini must be asked
-    for UnderstandingResult's exact (strict) schema, even though parsing is lenient."""
+    for the explicit Gemini schema (see _gemini_response_schema), even though parsing is lenient."""
     understand_message("मुझे किसान पेंशन चाहिए")
     call = mock_generate_structured[0]
     assert "मुझे किसान पेंशन चाहिए" in call["prompt"]
-    assert call["schema"] == UnderstandingResult.model_json_schema()
+    assert call["schema"] == understand._gemini_response_schema()
     assert call["system_instruction"] is not None
 
 
@@ -185,3 +186,117 @@ def test_system_instruction_insists_on_saving_the_land_size(mock_generate_struct
     instruction = mock_generate_structured[0]["system_instruction"]
     assert "ALWAYS fill" in instruction
     assert "landholding_hectares = 1.0" in instruction
+
+
+# --- Exclusion answers: explicit schema, answer hint, lenient normalization ------------
+
+_INCOME_TAX_QUESTION = "Did you, or anyone in your immediate family, pay income tax in the last assessment year?"
+
+
+def _profile_from(monkeypatch: pytest.MonkeyPatch, profile_updates: Any) -> UserProfile:
+    """Run understand_message against a mocked Gemini reply with these profile_updates."""
+    _patch_gemini(monkeypatch, {**_GOOD_RESPONSE, "profile_updates": profile_updates})
+    return understand_message("No", last_question=_INCOME_TAX_QUESTION, last_question_field="exclusion:income_tax_payer").profile_updates
+
+
+def test_schema_lists_every_exclusion_key_explicitly(mock_generate_structured: list[dict]) -> None:
+    """Gemini must see the exact allowed exclusion keys, each an optional true/false,
+    instead of pydantic's propertyNames/additionalProperties form."""
+    understand_message("hello")
+    exclusions = mock_generate_structured[0]["schema"]["$defs"]["UserProfile"]["properties"]["exclusions"]
+
+    assert "propertyNames" not in exclusions
+    assert "additionalProperties" not in exclusions
+    assert set(exclusions["properties"]) == {category.value for category in ExclusionCategory}
+    for prop in exclusions["properties"].values():
+        assert prop == {"anyOf": [{"type": "boolean"}, {"type": "null"}]}
+    assert UnderstandingResult.model_json_schema()["$defs"]["UserProfile"]["properties"]["exclusions"].get(
+        "propertyNames"
+    ), "the pydantic model's own schema must not be modified"
+
+
+def test_prompt_gives_the_exact_key_and_value_for_an_exclusion_answer(mock_generate_structured: list[dict]) -> None:
+    """With a last question, the prompt names its field key and exactly how to record yes/no."""
+    understand_message("No", last_question=_INCOME_TAX_QUESTION, last_question_field="exclusion:income_tax_payer")
+    prompt = mock_generate_structured[0]["prompt"]
+
+    assert "Field key for that question: exclusion:income_tax_payer" in prompt
+    assert 'profile_updates.exclusions = {"income_tax_payer": true} for yes' in prompt
+    assert '{"income_tax_payer": false} for no' in prompt
+
+
+def test_prompt_gives_the_field_for_a_plain_profile_answer(mock_generate_structured: list[dict]) -> None:
+    """A non-exclusion question points at the plain profile field."""
+    understand_message("yes", last_question="Do you own land?", last_question_field="owns_cultivable_land")
+    assert "profile_updates.owns_cultivable_land" in mock_generate_structured[0]["prompt"]
+
+
+def test_prompt_has_no_answer_hint_without_a_field(mock_generate_structured: list[dict]) -> None:
+    """With no last question field, no key hint is added."""
+    understand_message("hello")
+    assert "Field key" not in mock_generate_structured[0]["prompt"]
+
+
+@pytest.mark.parametrize(
+    "profile_updates",
+    [
+        {"exclusions": {"income_tax_payer": False}},  # the correct shape
+        {"exclusions": {"exclusion:income_tax_payer": False}},  # field key from our question list
+        {"exclusion:income_tax_payer": False},  # prefixed key at the top level
+        {"income_tax_payer": False},  # bare key at the top level
+        {"exclusions": {"income_tax_payer": "no"}},  # yes/no string
+        {"exclusions": {"income_tax_payer": "No"}},
+        {"exclusions": {"income_tax_payer": "false"}},
+        {"exclusions": {"Exclusion:Income_Tax_Payer": "FALSE"}},  # odd casing
+    ],
+)
+def test_no_to_income_tax_is_saved_from_every_shape(monkeypatch: pytest.MonkeyPatch, profile_updates: dict) -> None:
+    """Regression test: every shape Gemini might use for "No" to the income-tax question
+    must be saved as income_tax_payer = False."""
+    assert _profile_from(monkeypatch, profile_updates) == UserProfile(exclusions={"income_tax_payer": False})
+
+
+@pytest.mark.parametrize("value", [True, "yes", "Yes", "true", "TRUE"])
+def test_yes_strings_are_saved_as_true(monkeypatch: pytest.MonkeyPatch, value: Any) -> None:
+    """A "yes"/"true" answer in any form is saved as True."""
+    profile = _profile_from(monkeypatch, {"exclusions": {"income_tax_payer": value}})
+    assert profile.exclusion_answer(ExclusionCategory.INCOME_TAX_PAYER) is True
+
+
+def test_unknown_exclusion_keys_are_ignored_one_by_one(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unknown key or an unusable value is ignored on its own; the valid answer and the
+    other profile facts survive, and the warning shows neither the bad key nor the value."""
+    updates = {
+        "age": 35,
+        "exclusions": {"income_tax_payer": False, "tax_payer_sitapur": False, "government_employee": "maybe"},
+    }
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        profile = _profile_from(monkeypatch, updates)
+
+    assert profile == UserProfile(age=35, exclusions={"income_tax_payer": False})
+    assert "2 unusable exclusion answer(s)" in caplog.text
+    assert "tax_payer_sitapur" not in caplog.text
+    assert "maybe" not in caplog.text
+
+
+def test_exclusions_that_is_not_an_object_does_not_drop_other_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Even a completely wrong exclusions value (a list) only loses the exclusions."""
+    assert _profile_from(monkeypatch, {"age": 35, "exclusions": ["income_tax_payer"]}) == UserProfile(age=35)
+
+
+def test_raw_profile_updates_are_logged_only_when_debug_raw_is_on(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The raw JSON is logged at DEBUG on a separate logger, so it never shows by default."""
+    raw = {"exclusions": {"exclusion:income_tax_payer": "no"}}
+
+    with caplog.at_level("WARNING", logger=understand.__name__):
+        _profile_from(monkeypatch, raw)
+    assert "raw profile_updates" not in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("DEBUG", logger=understand.raw_logger.name):
+        _profile_from(monkeypatch, raw)
+    assert 'raw profile_updates: {"exclusions": {"exclusion:income_tax_payer": "no"}}' in caplog.text

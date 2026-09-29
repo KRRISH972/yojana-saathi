@@ -83,4 +83,6 @@ One chat turn (`backend/services/assistant.py`'s `handle_message`) runs, in orde
 4. `backend/services/eligibility.py`'s `check_eligibility` (pure Python, no LLM) decides each matched scheme's status.
 5. A second Gemini call (`backend/prompts/system_prompt.md` as the system instruction) writes the reply from that decided status — **Gemini explains, it never decides eligibility.**
 
-`scripts/chat_cli.py` chats with this pipeline in the terminal, for manual testing.
+`scripts/chat_cli.py` chats with this pipeline in the terminal, for manual testing. It prints our own warnings (e.g. a dropped profile field), `debug` shows the live profile first, and `YS_DEBUG_RAW=1` also prints Gemini's raw `profile_updates` each turn (local debugging only, off by default).
+
+Gemini's `profile_updates` are parsed leniently in `understand.py`: nulls mean "not mentioned", exclusion answers are accepted with an `exclusion:` prefix, at the top level, or as "yes"/"no" strings, and anything invalid is dropped one field (or one exclusion key) at a time, never the whole update. The schema sent to Gemini lists every exclusion key explicitly, and each turn passes the last question's field key (`next_question_field`) so Gemini knows exactly where a yes/no answer goes.

@@ -51,7 +51,7 @@ def test_full_turn_eligible_farmer(monkeypatch: pytest.MonkeyPatch, mock_generat
     schemes, and the reply prompt should carry both official links."""
     monkeypatch.setattr(
         assistant, "understand_message",
-        lambda message, last_question=None: _fake_understanding(
+        lambda message, last_question=None, last_question_field=None: _fake_understanding(
             age=30, owns_cultivable_land=True, landholding_hectares=1.5, monthly_pension=0, exclusions=_ALL_CLEAR
         ),
     )  # fmt: skip
@@ -79,7 +79,7 @@ def test_profile_merges_across_turns(monkeypatch: pytest.MonkeyPatch) -> None:
     message only mentions something else."""
     monkeypatch.setattr(
         assistant, "understand_message",
-        lambda message, last_question=None: _fake_understanding(age=30),
+        lambda message, last_question=None, last_question_field=None: _fake_understanding(age=30),
     )  # fmt: skip
     _patch_search(monkeypatch, [])
 
@@ -89,7 +89,7 @@ def test_profile_merges_across_turns(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         assistant, "understand_message",
-        lambda message, last_question=None: _fake_understanding(owns_cultivable_land=True),
+        lambda message, last_question=None, last_question_field=None: _fake_understanding(owns_cultivable_land=True),
     )  # fmt: skip
     turn_two = assistant.handle_message("Yes, I own land", profile=turn_one.profile)
 
@@ -99,7 +99,7 @@ def test_profile_merges_across_turns(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_matches_below_threshold_are_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
     """A weak search match (below 0.35) must not reach the eligibility engine at all."""
-    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None: _fake_understanding())
+    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None, last_question_field=None: _fake_understanding())
     _patch_search(monkeypatch, [SchemeMatch(scheme_id="pm-kisan", category="agriculture", score=0.20)])
 
     result = assistant.handle_message("something unrelated")
@@ -112,7 +112,7 @@ def test_matches_below_threshold_are_dropped(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_best_score_wins_when_both_queries_match_the_same_scheme(monkeypatch: pytest.MonkeyPatch) -> None:
     """If the English and Hindi queries both find the same scheme, keep the higher score."""
-    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None: _fake_understanding())
+    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None, last_question_field=None: _fake_understanding())
 
     def fake_search(query: str, top_k: int = 5, **_: object) -> list[SchemeMatch]:
         score = 0.9 if "पेंशन" in query else 0.5  # different score per language
@@ -126,7 +126,7 @@ def test_best_score_wins_when_both_queries_match_the_same_scheme(monkeypatch: py
 
 def test_no_match_still_produces_a_reply(monkeypatch: pytest.MonkeyPatch, mock_generate_text: MagicMock) -> None:
     """When nothing matches, the assistant still calls Gemini, saying honestly there is no match."""
-    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None: _fake_understanding())
+    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None, last_question_field=None: _fake_understanding())
     _patch_search(monkeypatch, [])
 
     result = assistant.handle_message("scholarship for students")
@@ -138,7 +138,7 @@ def test_no_match_still_produces_a_reply(monkeypatch: pytest.MonkeyPatch, mock_g
 
 def test_next_question_is_the_single_most_useful_one(monkeypatch: pytest.MonkeyPatch) -> None:
     """With an empty profile, the assistant should surface exactly one follow-up question."""
-    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None: _fake_understanding())
+    monkeypatch.setattr(assistant, "understand_message", lambda message, last_question=None, last_question_field=None: _fake_understanding())
     _patch_search(monkeypatch, [
         SchemeMatch(scheme_id="pm-kmy", category="pension", score=0.8),
         SchemeMatch(scheme_id="pm-kisan", category="agriculture", score=0.7),
@@ -157,7 +157,7 @@ def test_answer_only_turn_keeps_earlier_matched_schemes(monkeypatch: pytest.Monk
     schemes matched in turn 1 — they should still be checked with the updated profile."""
     monkeypatch.setattr(
         assistant, "understand_message",
-        lambda message, last_question=None: UnderstandingResult(
+        lambda message, last_question=None, last_question_field=None: UnderstandingResult(
             profile_updates=UserProfile(age=35, owns_cultivable_land=True, landholding_hectares=1.0),
             search_query_en="pension and income support for farmers",
             search_query_hi="किसानों के लिए पेंशन और आय सहायता",
@@ -179,7 +179,7 @@ def test_answer_only_turn_keeps_earlier_matched_schemes(monkeypatch: pytest.Monk
     # Turn two only answers the income-tax question; the search queries come back empty.
     monkeypatch.setattr(
         assistant, "understand_message",
-        lambda message, last_question=None: UnderstandingResult(
+        lambda message, last_question=None, last_question_field=None: UnderstandingResult(
             profile_updates=UserProfile(exclusions={ExclusionCategory.INCOME_TAX_PAYER: False}),
             search_query_en="",
             search_query_hi="",
@@ -209,7 +209,7 @@ def _set_understanding(monkeypatch: pytest.MonkeyPatch, updates: UserProfile) ->
     """Make the next understand_message call return ``updates`` as an answer-only turn."""
     monkeypatch.setattr(
         assistant, "understand_message",
-        lambda message, last_question=None: UnderstandingResult(
+        lambda message, last_question=None, last_question_field=None: UnderstandingResult(
             profile_updates=updates, search_query_en="", search_query_hi="", language_style=LanguageStyle.ENGLISH
         ),
     )  # fmt: skip
@@ -305,3 +305,26 @@ def test_flash_lite_real_responses_advance_the_conversation(monkeypatch: pytest.
     assert turn_two.profile.age == 35  # turn one's facts are still there
     assert turn_two.profile.exclusion_answer(ExclusionCategory.INCOME_TAX_PAYER) is False
     assert "income tax" not in (turn_two.next_question or "").lower()
+
+
+def test_next_question_field_is_returned_and_passed_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The next question's field key comes back with the result, and handle_message hands
+    it to understand_message on the next turn so Gemini knows exactly where "No" goes."""
+    seen: list[str | None] = []
+
+    def fake_understand(message: str, last_question: str | None = None, last_question_field: str | None = None):
+        seen.append(last_question_field)
+        return _fake_understanding(age=35, owns_cultivable_land=True, landholding_hectares=1.0)
+
+    monkeypatch.setattr(assistant, "understand_message", fake_understand)
+    _patch_search(monkeypatch, [SchemeMatch(scheme_id="pm-kisan", category="agriculture", score=0.6)])
+
+    turn_one = assistant.handle_message("I am a farmer")
+    assert turn_one.next_question_field == turn_one.eligibility.questions[0].field
+    assert turn_one.next_question_field is not None
+
+    assistant.handle_message(
+        "No", profile=turn_one.profile, last_question=turn_one.next_question,
+        matched_scheme_ids=turn_one.matched_scheme_ids, last_question_field=turn_one.next_question_field,
+    )  # fmt: skip
+    assert seen == [None, turn_one.next_question_field]

@@ -10,11 +10,17 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.models.scheme import Scheme
 from backend.models.user_profile import UserProfile, invalid_field_names
-from backend.services.eligibility import EligibilityReport, EligibilityStatus, SchemeResult, check_eligibility
+from backend.services.eligibility import (
+    EligibilityReport,
+    EligibilityStatus,
+    Question,
+    SchemeResult,
+    check_eligibility,
+)
 from backend.services.llm import generate_text
 from backend.services.retriever import SchemeMatch, search_schemes
 from backend.services.understand import understand_message
@@ -43,6 +49,9 @@ class ChatTurnResult(BaseModel):
     eligibility: EligibilityReport
     matched_scheme_ids: list[str]
     next_question: str | None = None
+    next_question_field: str | None = Field(
+        default=None, description="Field key of next_question (e.g. 'exclusion:income_tax_payer'); pass it back next turn."
+    )
 
 
 @lru_cache
@@ -154,7 +163,7 @@ def _format_scheme_result(result: SchemeResult, scheme: Scheme | None) -> str:
 
 def _build_reply_prompt(
     message: str, language_style: str, report: EligibilityReport, schemes_by_id: dict[str, Scheme]
-) -> tuple[str, str | None]:
+) -> tuple[str, Question | None]:
     """Build the input text for the reply-writing Gemini call, and pick the single
     follow-up question (if any) it is allowed to ask."""
     all_results = report.eligible + report.possibly_eligible + report.not_eligible
@@ -163,8 +172,8 @@ def _build_reply_prompt(
     else:
         scheme_section = "\n".join(_format_scheme_result(r, schemes_by_id.get(r.scheme_id)) for r in all_results)
 
-    next_question = report.questions[0].question if report.questions else None
-    question_section = next_question or "(none - do not ask a question this turn)"
+    next_question = report.questions[0] if report.questions else None
+    question_section = next_question.question if next_question else "(none - do not ask a question this turn)"
 
     prompt = (
         f"User's language style: {language_style}\n\n"
@@ -180,20 +189,23 @@ def handle_message(
     profile: UserProfile | None = None,
     last_question: str | None = None,
     matched_scheme_ids: list[str] | None = None,
+    last_question_field: str | None = None,
 ) -> ChatTurnResult:
     """Run one full chat turn and return the reply plus the updated state.
 
     ``profile`` is the profile accumulated so far (an empty UserProfile for a new
     conversation); ``last_question`` is the exact question text most recently asked, used
-    to interpret a short answer like "yes" correctly; ``matched_scheme_ids`` are the
+    to interpret a short answer like "yes" correctly, and ``last_question_field`` is that
+    question's field key (``result.next_question_field``), which tells Gemini exactly where
+    the answer belongs; ``matched_scheme_ids`` are the
     scheme ids already in play from earlier turns (empty/None for a new conversation).
     The caller (e.g. scripts/chat_cli.py) is expected to keep passing back
     ``result.matched_scheme_ids`` on the next call, the same way it already does for
-    ``profile`` and ``last_question``.
+    ``profile``, ``last_question`` and ``last_question_field``.
     """
     profile = profile if profile is not None else UserProfile()
 
-    understanding = understand_message(message, last_question=last_question)
+    understanding = understand_message(message, last_question=last_question, last_question_field=last_question_field)
     merged_profile = _merge_profile(profile, understanding.profile_updates)
 
     all_matched_ids = _resolve_matched_scheme_ids(
@@ -214,5 +226,6 @@ def handle_message(
         profile=merged_profile,
         eligibility=report,
         matched_scheme_ids=[s.id for s in matched_schemes],
-        next_question=next_question,
+        next_question=next_question.question if next_question else None,
+        next_question_field=next_question.field if next_question else None,
     )

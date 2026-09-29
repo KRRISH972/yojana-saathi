@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     gemini_api_key: str
     gemini_model: str = "gemini-3.5-flash-lite"
+    ys_debug_raw: bool = False  # local debugging only: chat_cli prints Gemini's raw profile_updates
 
 
 @lru_cache
