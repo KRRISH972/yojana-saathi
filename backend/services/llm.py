@@ -105,7 +105,7 @@ def _friendly_rate_limit_message(exc: Exception) -> str:
         return "Gemini's free daily quota has been used up. Please try again tomorrow."
     if "per minute" in detail or "rpm" in detail:
         return "Gemini is getting a lot of requests right now. Please try again in a minute."
-    return "Gemini is getting a lot of requests right now. Please try again shortly."
+    return "The free AI limit may be used up. Try again in a minute; if it keeps happening, try again tomorrow."
 
 
 def _call_gemini(**kwargs: object) -> object:

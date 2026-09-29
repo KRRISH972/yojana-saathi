@@ -133,6 +133,18 @@ def test_daily_quota_message_names_the_daily_limit(fake_client: MagicMock) -> No
         llm.generate_text("hi")
 
 
+def test_unspecified_limit_message_covers_both_minute_and_daily(fake_client: MagicMock) -> None:
+    """When the 429 doesn't say which limit was hit, the message must cover both cases."""
+    fake_client.interactions.create.side_effect = _FakeAPIError(
+        429, body={"error": {"message": "Resource has been exhausted."}}
+    )
+    with pytest.raises(llm.GeminiRateLimitError) as excinfo:
+        llm.generate_text("hi")
+    assert str(excinfo.value) == (
+        "The free AI limit may be used up. Try again in a minute; if it keeps happening, try again tomorrow."
+    )
+
+
 def test_per_minute_quota_message_says_try_again_in_a_minute(fake_client: MagicMock) -> None:
     """A per-minute limit should still get the "try again in a minute" message."""
     fake_client.interactions.create.side_effect = _FakeAPIError(

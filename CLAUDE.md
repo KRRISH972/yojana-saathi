@@ -7,7 +7,7 @@ AI assistant that helps Indian citizens (especially rural users) discover govern
 - **Backend:** Python 3.14, FastAPI (confirmed: `requirements.txt` installs cleanly on 3.14, including torch, sentence-transformers and chromadb — stay on 3.14)
 - **Vector DB:** ChromaDB (persistent, local)
 - **Embeddings:** sentence-transformers multilingual model, run locally
-- **LLM:** Google Gemini API (free tier), model `gemini-3.8-flash`, configured via `GEMINI_API_KEY` / `GEMINI_MODEL`
+- **LLM:** Google Gemini API (free tier), model `gemini-3.5-flash-lite`, configured via `GEMINI_API_KEY` / `GEMINI_MODEL`
 - **Frontend:** plain HTML + Tailwind CSS + vanilla JS (no build step)
 - **Voice:** browser Web Speech API (speech recognition + synthesis)
 - **Deployment:** Hugging Face Spaces (Docker)
@@ -39,8 +39,8 @@ scripts/      One-off CLI tools (e.g. ingest schemes into ChromaDB)
 
 ## Gemini API
 
-- **NEVER make a real Gemini API call (live, unmocked) without asking the project owner first — including "quick" manual smoke tests, verification scripts, or `scripts/chat_cli.py`.** The free tier has a very small daily quota (a real 429 error observed on `gemini-3.8-flash` reported "limit: 20 requests per day on Free Tier"), and one unapproved test run can burn through it for the rest of the day. Use mocked tests (see `backend/tests/test_llm.py`, `test_understand.py`, `test_assistant.py`) for everything by default; only run a real call after explicit approval for that specific run.
-- **Model:** `gemini-3.8-flash`. Gemini 2.0 models are shut down and 2.5 models are being shut down, so never use them.
+- **NEVER make a real Gemini API call (live, unmocked) without asking the project owner first — including "quick" manual smoke tests, verification scripts, or `scripts/chat_cli.py`.** The free tier has a small daily quota (a real 429 error observed on the old `gemini-3.8-flash` reported "limit: 20 requests per day on Free Tier"; Flash-Lite's is larger but still limited), and one unapproved test run can burn through it for the rest of the day. Use mocked tests (see `backend/tests/test_llm.py`, `test_understand.py`, `test_assistant.py`) for everything by default; only run a real call after explicit approval for that specific run.
+- **Model:** `gemini-3.5-flash-lite` (stable; supports structured JSON output and `thinking_level`). We switched from `gemini-3.8-flash` because its free tier allows only about 20 requests per day, and every chat turn makes 2 calls (understand + reply), so that was only ~10 conversation turns a day. Flash-Lite's free tier allows about 500 requests per day (~250 turns). These limits are approximate and change; see the AI Studio rate-limit page for the current ones. Gemini 2.0 models are shut down and 2.5 models are being shut down, so never use them.
 - **Check the docs first:** before writing any Gemini code, read the current official docs at https://ai.google.dev/gemini-api/docs/latest-model. The SDK and API have changed recently, so do not rely on older examples from memory.
 - **Thinking level:** use `thinking_level` set to `"low"` for chat responses to keep replies fast.
 - **All calls go through `backend/services/llm.py`** (`generate_text` / `generate_structured`) — nothing else imports `google.genai` directly. It uses `client.interactions.create(...)`, a top-level `system_instruction`, and `generation_config={"thinking_level": ...}`; it never passes `temperature`, `top_p`, `top_k`, `candidate_count`, or `thinking_budget` (all deprecated/unsupported on Gemini 3+).
